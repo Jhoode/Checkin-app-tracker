@@ -431,6 +431,10 @@
       [{ author: 'Jude', time: nowStr(), text: 'Holding on this until we hear back on the hardware budget.' }]),
     mk('Define data privacy approach for member data', 'Planning/Design', 'pending', 0,
       'Attendance data is sensitive — needs a clear policy on storage, access, and retention before dev starts.', []),
+    mk('Design device registration flow', 'Planning/Design', 'pending', 0,
+      'Define how the initial QR scan pairs a member to their phone/app install so later check-ins can happen automatically.', []),
+    mk('Decide geofencing vs. Bluetooth beacons', 'Planning/Design', 'pending', 0,
+      'GPS geofencing is simpler and hardware-free but less precise indoors. BLE beacons are more precise but need hardware and upkeep. Pick one before building.', []),
     mk('Design database schema: members, visits, services', 'Planning/Design', 'in_progress', 40,
       'Core tables for members, services, and visit check-ins.', []),
     mk('Draft timeline and task owners for kickoff', 'Planning/Design', 'in_progress', 70,
@@ -442,6 +446,10 @@
       'Repo, branch strategy, and local dev setup for the team.', []),
     mk('Build check-in screen and admin dashboard', 'Development', 'pending', 0,
       'Core check-in flow plus a simple admin view for attendance records.', []),
+    mk('Build consent screen for location tracking', 'Development', 'pending', 0,
+      'Clear, explicit consent flow before background location or Bluetooth is enabled, explaining what is tracked and why.', []),
+    mk('Handle background permission flow', 'Development', 'pending', 0,
+      'OS-level location/Bluetooth permission requests, plus a graceful fallback if a member declines.', []),
 
     mk('Test check-in flow with a few church members', 'Testing', 'pending', 0,
       'Small pilot test before rolling out to the full congregation.', []),
@@ -487,7 +495,7 @@
     root.innerHTML = `
       <div class="topbar">
         <div>
-          <h1>⚡ Check-In App Project Tracker</h1>
+          <h1>⚡ Check-In App Tracker</h1>
           <div class="connected"><span class="dot"></span>Connected</div>
         </div>
         <div class="top-actions">
