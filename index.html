@@ -1,0 +1,706 @@
+<div id="tracker-root"></div>
+<style>
+  #tracker-root, #tracker-root * { box-sizing: border-box; }
+  #tracker-root {
+    --bg: #2e2f5e;
+    --panel: #3a3c72;
+    --panel-2: #454886;
+    --border: #545795;
+    --orange: #f4831f;
+    --orange-soft: #ffab5c;
+    --green: #34c759;
+    --yellow: #e8c22e;
+    --red: #e5484d;
+    --blue: #4b9fe8;
+    --text: #eaeaea;
+    --text-dim: #9a9a9a;
+
+    font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding: 20px 22px 40px;
+    min-height: 100vh;
+    border-radius: 10px;
+  }
+
+  #tracker-root .topbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 6px;
+  }
+  #tracker-root h1 {
+    font-size: 22px;
+    font-weight: 700;
+    margin: 0;
+    color: var(--orange);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  #tracker-root .connected {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11.5px;
+    color: var(--green);
+    margin-top: 4px;
+  }
+  #tracker-root .connected .dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 6px var(--green);
+  }
+  #tracker-root .top-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  #tracker-root .btn {
+    border: none;
+    border-radius: 6px;
+    padding: 8px 13px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    letter-spacing: 0.02em;
+  }
+  #tracker-root .btn-outline { background: var(--panel-2); color: var(--text-dim); border: 1px solid var(--border); }
+  #tracker-root .btn-outline:hover { color: var(--text); border-color: #444; }
+  #tracker-root .btn-orange { background: var(--orange); color: #1a0f00; }
+  #tracker-root .btn-orange:hover { background: var(--orange-soft); }
+
+  #tracker-root hr.divider {
+    border: none;
+    height: 1px;
+    background: linear-gradient(90deg, var(--orange), transparent);
+    margin: 14px 0 18px;
+  }
+
+  #tracker-root .stats {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 12px;
+    margin-bottom: 22px;
+  }
+  #tracker-root .stat-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 10px 12px;
+    text-align: center;
+    border-top: 3px solid var(--text-dim);
+  }
+  #tracker-root .stat-card.total { border-top-color: var(--orange); }
+  #tracker-root .stat-card.complete { border-top-color: var(--green); }
+  #tracker-root .stat-card.progress { border-top-color: var(--yellow); }
+  #tracker-root .stat-card.blocked { border-top-color: var(--red); }
+  #tracker-root .stat-card.pending { border-top-color: var(--blue); }
+  #tracker-root .stat-num { font-size: 26px; font-weight: 700; }
+  #tracker-root .stat-card.total .stat-num { color: var(--orange); }
+  #tracker-root .stat-card.complete .stat-num { color: var(--green); }
+  #tracker-root .stat-card.progress .stat-num { color: var(--yellow); }
+  #tracker-root .stat-card.blocked .stat-num { color: var(--red); }
+  #tracker-root .stat-card.pending .stat-num { color: var(--blue); }
+  #tracker-root .stat-lbl {
+    font-size: 10.5px;
+    color: var(--text-dim);
+    letter-spacing: 0.08em;
+    margin-top: 3px;
+  }
+
+  #tracker-root .backlog-label {
+    color: var(--orange-soft);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    margin-bottom: 12px;
+  }
+
+  #tracker-root .pipeline {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    margin-bottom: 24px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+  #tracker-root .pipe-stage {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-top: 3px solid var(--orange);
+    border-radius: 8px;
+    padding: 10px 14px;
+    min-width: 148px;
+    flex: 1;
+  }
+  #tracker-root .pipe-stage .stage-name {
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--orange-soft);
+    white-space: nowrap;
+  }
+  #tracker-root .pipe-stage .stage-count {
+    font-size: 10.5px;
+    color: var(--text-dim);
+    margin-top: 2px;
+  }
+  #tracker-root .pipe-stage.complete {
+    border-top-color: var(--green);
+    background: rgba(52,199,89,0.14);
+  }
+  #tracker-root .pipe-stage.complete .stage-name { color: var(--green); }
+  #tracker-root .pipe-arrow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--orange);
+    font-size: 15px;
+    padding: 0 6px;
+    font-weight: 700;
+  }
+
+  #tracker-root .stage-section { margin-bottom: 26px; }
+  #tracker-root .stage-header {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    margin-bottom: 10px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border);
+  }
+  #tracker-root .stage-header .idx {
+    color: var(--orange);
+    font-weight: 700;
+    font-size: 19px;
+  }
+  #tracker-root .stage-header .name {
+    font-size: 21px;
+    font-weight: 700;
+    color: var(--text);
+  }
+  #tracker-root .stage-header .count {
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+
+  #tracker-root .project {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 18px;
+    margin-bottom: 12px;
+    display: flex;
+    gap: 18px;
+    align-items: flex-start;
+  }
+  #tracker-root .project-main { flex: 1; min-width: 0; }
+  #tracker-root .project-comments {
+    width: 250px;
+    flex-shrink: 0;
+    border-left: 1px solid var(--border);
+    padding-left: 16px;
+  }
+  #tracker-root .comments-heading {
+    font-size: 11.5px;
+    font-weight: 700;
+    color: var(--text-dim);
+    margin-bottom: 8px;
+  }
+  #tracker-root .comments-list {
+    max-height: 190px;
+    overflow-y: auto;
+    margin-bottom: 8px;
+  }
+  #tracker-root .no-comments {
+    font-size: 12px;
+    color: var(--text-dim);
+    font-style: italic;
+  }
+  @media (max-width: 780px) {
+    #tracker-root .project { flex-direction: column; }
+    #tracker-root .project-comments {
+      width: 100%;
+      border-left: none;
+      border-top: 1px solid var(--border);
+      padding-left: 0;
+      padding-top: 12px;
+    }
+  }
+  #tracker-root .project-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  #tracker-root .project-title { font-size: 16px; font-weight: 700; color: var(--orange-soft); }
+  #tracker-root .project-cat { font-size: 11.5px; color: var(--text-dim); margin-top: 1px; }
+  #tracker-root .project-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
+  #tracker-root .status-pill {
+    font-size: 10.5px;
+    font-weight: 700;
+    padding: 4px 9px;
+    border-radius: 5px;
+    letter-spacing: 0.03em;
+    cursor: pointer;
+    border: none;
+  }
+  #tracker-root .status-pill.complete { background: rgba(52,199,89,0.18); color: var(--green); }
+  #tracker-root .status-pill.in_progress { background: rgba(232,194,46,0.18); color: var(--yellow); }
+  #tracker-root .status-pill.blocked { background: rgba(229,72,77,0.18); color: var(--red); }
+  #tracker-root .status-pill.pending { background: rgba(75,159,232,0.18); color: var(--blue); }
+
+  #tracker-root .icon-btn {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    width: 26px; height: 26px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 12px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  #tracker-root .icon-btn:hover { color: var(--text); border-color: #555; }
+  #tracker-root .icon-btn.danger:hover { color: var(--red); border-color: var(--red); }
+
+  #tracker-root .project-desc {
+    font-size: 13px;
+    color: #cfcfcf;
+    margin: 10px 0 12px;
+    line-height: 1.4;
+  }
+
+  #tracker-root .progress-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  #tracker-root .progress-track {
+    flex: 1;
+    height: 7px;
+    background: #2a2a2a;
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  #tracker-root .progress-fill { height: 100%; border-radius: 4px; transition: width 0.2s ease; }
+  #tracker-root .progress-fill.complete { background: var(--green); }
+  #tracker-root .progress-fill.in_progress { background: var(--yellow); }
+  #tracker-root .progress-fill.blocked { background: var(--red); }
+  #tracker-root .progress-fill.pending { background: var(--blue); }
+  #tracker-root .progress-pct { font-size: 12px; color: var(--text-dim); width: 38px; text-align: right; }
+
+  #tracker-root .step-actions { display: flex; gap: 7px; margin-bottom: 8px; }
+  #tracker-root .sbtn {
+    border: 1px solid var(--border);
+    background: var(--panel-2);
+    font-size: 11.5px;
+    font-weight: 600;
+    padding: 5px 12px;
+    border-radius: 5px;
+    cursor: pointer;
+  }
+  #tracker-root .sbtn.start { color: var(--green); }
+  #tracker-root .sbtn.start:hover { border-color: var(--green); }
+  #tracker-root .sbtn.stop { color: var(--text-dim); }
+  #tracker-root .sbtn.stop:hover { border-color: var(--text-dim); color: var(--text); }
+  #tracker-root .sbtn.block { color: var(--red); }
+  #tracker-root .sbtn.block:hover { border-color: var(--red); }
+
+  #tracker-root .quick-actions { display: flex; gap: 7px; margin-bottom: 4px; }
+  #tracker-root .qbtn {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    color: var(--orange-soft);
+    font-size: 11.5px;
+    font-weight: 600;
+    padding: 5px 11px;
+    border-radius: 5px;
+    cursor: pointer;
+  }
+  #tracker-root .qbtn:hover { border-color: var(--orange); }
+  #tracker-root .qbtn.done { color: var(--green); }
+  #tracker-root .qbtn.done:hover { border-color: var(--green); }
+
+  #tracker-root .comment {
+    background: var(--panel-2);
+    border-left: 2px solid var(--orange);
+    border-radius: 4px;
+    padding: 7px 10px;
+    margin-bottom: 7px;
+    font-size: 12.5px;
+  }
+  #tracker-root .comment .meta { color: var(--orange-soft); font-size: 10.5px; margin-bottom: 3px; font-weight: 600; }
+  #tracker-root .comment .body { color: #d8d8d8; line-height: 1.35; }
+  #tracker-root .comment-add { display: flex; gap: 8px; margin-top: 6px; }
+  #tracker-root .comment-add input {
+    flex: 1;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 7px 10px;
+    border-radius: 5px;
+    font-size: 12.5px;
+  }
+  #tracker-root .comment-add button {
+    background: var(--orange);
+    color: #1a0f00;
+    border: none;
+    border-radius: 5px;
+    padding: 7px 14px;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  #tracker-root .comment-add button:hover { background: var(--orange-soft); }
+
+  #tracker-root .empty-stage {
+    color: var(--text-dim);
+    font-size: 12.5px;
+    font-style: italic;
+    padding: 10px 4px 4px;
+  }
+
+  #tracker-root .modal-overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.65);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 50;
+  }
+  #tracker-root .modal {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px;
+    width: 360px;
+    max-width: 90vw;
+  }
+  #tracker-root .modal h3 { margin: 0 0 14px; font-size: 15px; color: var(--orange-soft); }
+  #tracker-root .field { margin-bottom: 11px; }
+  #tracker-root .field label {
+    display: block; font-size: 10.5px; color: var(--text-dim);
+    text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 5px;
+  }
+  #tracker-root .field input, #tracker-root .field select, #tracker-root .field textarea {
+    width: 100%;
+    background: #141414;
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 8px 9px;
+    border-radius: 5px;
+    font-size: 13px;
+    font-family: inherit;
+  }
+  #tracker-root .field textarea { resize: vertical; min-height: 55px; }
+  #tracker-root .modal-actions {
+    display: flex; justify-content: space-between; align-items: center; margin-top: 14px;
+  }
+  #tracker-root .loading { text-align: center; color: var(--text-dim); padding: 40px; font-size: 13px; }
+  #tracker-root .shared-note { font-size: 10.5px; color: var(--text-dim); text-align: center; margin-top: 20px; }
+
+  @media (max-width: 900px) {
+    #tracker-root .stats { grid-template-columns: repeat(2, 1fr); }
+    #tracker-root .pipeline { flex-direction: column; }
+    #tracker-root .pipe-arrow { transform: rotate(90deg); padding: 4px 0; }
+  }
+</style>
+
+<script>
+(function() {
+  const STORAGE_KEY = 'checkin-app-tracker-v3';
+  const STATUSES = ['pending', 'in_progress', 'blocked', 'complete'];
+  const STATUS_LABEL = { pending: 'PENDING', in_progress: 'IN PROGRESS', blocked: 'BLOCKED', complete: 'COMPLETE' };
+  const STAGES = ['Requirement Gathering', 'Planning/Design', 'Development', 'Testing', 'Deployment', 'Maintenance'];
+
+  function mk(title, stage, status, progress, desc, comments) {
+    return {
+      id: 'p' + Math.random().toString(36).slice(2, 10),
+      title, stage, status, progress, desc,
+      comments: comments || []
+    };
+  }
+  function nowStr() {
+    return new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  }
+
+  const SEED = [
+    mk('Interview pastoral staff on visit-tracking needs', 'Requirement Gathering', 'pending', 0,
+      'Talk to pastoral staff about what they actually need visit data for before locking requirements.', []),
+    mk('Kickoff meeting scheduled', 'Requirement Gathering', 'complete', 100,
+      'Kickoff is on the calendar with the team.', []),
+
+    mk('Decide check-in method: QR, NFC, or manual', 'Planning/Design', 'blocked', 0,
+      'Blocked until we confirm what hardware and budget the church can realistically support for check-in.',
+      [{ author: 'Jude', time: nowStr(), text: 'Holding on this until we hear back on the hardware budget.' }]),
+    mk('Define data privacy approach for member data', 'Planning/Design', 'pending', 0,
+      'Attendance data is sensitive — needs a clear policy on storage, access, and retention before dev starts.', []),
+    mk('Design database schema: members, visits, services', 'Planning/Design', 'in_progress', 40,
+      'Core tables for members, services, and visit check-ins.', []),
+    mk('Draft timeline and task owners for kickoff', 'Planning/Design', 'in_progress', 70,
+      'Timeline and owners to walk through at the kickoff meeting.', []),
+
+    mk('Choose tech stack', 'Development', 'complete', 100,
+      'Landed on stack for the MVP.', []),
+    mk('Set up shared repo and dev environment', 'Development', 'in_progress', 50,
+      'Repo, branch strategy, and local dev setup for the team.', []),
+    mk('Build check-in screen and admin dashboard', 'Development', 'pending', 0,
+      'Core check-in flow plus a simple admin view for attendance records.', []),
+
+    mk('Test check-in flow with a few church members', 'Testing', 'pending', 0,
+      'Small pilot test before rolling out to the full congregation.', []),
+
+    mk('Deploy MVP for a live service', 'Deployment', 'pending', 0,
+      'Ship the first working version and use it during an actual service.', []),
+
+    mk('Set up ongoing support and feedback loop', 'Maintenance', 'pending', 0,
+      'Way for members and staff to report issues or request changes after launch.', [])
+  ];
+
+  let projects = null;
+  const root = document.getElementById('tracker-root');
+
+  async function load() {
+    root.innerHTML = '<div class="loading">Loading tracker…</div>';
+    try {
+      const res = await window.storage.get(STORAGE_KEY, true);
+      projects = res && res.value ? JSON.parse(res.value) : JSON.parse(JSON.stringify(SEED));
+    } catch (e) {
+      projects = JSON.parse(JSON.stringify(SEED));
+    }
+    render();
+  }
+  async function save() {
+    try { await window.storage.set(STORAGE_KEY, JSON.stringify(projects), true); }
+    catch (e) { console.error('Save failed', e); }
+  }
+
+  function escapeHtml(s) {
+    const d = document.createElement('div');
+    d.textContent = s || '';
+    return d.innerHTML;
+  }
+
+  function render() {
+    const total = projects.length;
+    const complete = projects.filter(p => p.status === 'complete').length;
+    const inProgress = projects.filter(p => p.status === 'in_progress').length;
+    const blocked = projects.filter(p => p.status === 'blocked').length;
+    const pending = projects.filter(p => p.status === 'pending').length;
+
+    root.innerHTML = `
+      <div class="topbar">
+        <div>
+          <h1>⚡ Check-In App Project Tracker</h1>
+          <div class="connected"><span class="dot"></span>Connected</div>
+        </div>
+        <div class="top-actions">
+          <button class="btn btn-outline" id="export-btn">⬇ Export</button>
+          <button class="btn btn-outline" id="reset-btn">Reset</button>
+          <button class="btn btn-orange" id="new-btn">+ New Task</button>
+        </div>
+      </div>
+      <hr class="divider">
+      <div class="backlog-label">📋 PRODUCT BACKLOG WITH THE STEPS</div>
+      <div class="pipeline" id="pipeline"></div>
+      <div id="stage-list"></div>
+      <div class="shared-note">This board is shared — anyone with this artifact can see and edit it.</div>
+    `;
+
+    const pipelineEl = root.querySelector('#pipeline');
+    STAGES.forEach((stage, i) => {
+      const stageItems = projects.filter(p => p.stage === stage);
+      const count = stageItems.length;
+      const isComplete = count > 0 && stageItems.every(p => p.status === 'complete');
+      const stageEl = document.createElement('div');
+      stageEl.className = 'pipe-stage' + (isComplete ? ' complete' : '');
+      stageEl.innerHTML = `<div class="stage-name">${escapeHtml(stage)}</div><div class="stage-count">${count} task${count === 1 ? '' : 's'}</div>`;
+      pipelineEl.appendChild(stageEl);
+      if (i < STAGES.length - 1) {
+        const arrow = document.createElement('div');
+        arrow.className = 'pipe-arrow';
+        arrow.textContent = '---->';
+        pipelineEl.appendChild(arrow);
+      }
+    });
+
+    const stageList = root.querySelector('#stage-list');
+    STAGES.forEach((stage, i) => {
+      const items = projects.filter(p => p.stage === stage);
+      const section = document.createElement('div');
+      section.className = 'stage-section';
+      section.innerHTML = `
+        <div class="stage-header">
+          <span class="idx">${i + 1}.</span>
+          <span class="name">${escapeHtml(stage)}</span>
+          <span class="count">(${items.length})</span>
+        </div>
+        <div class="stage-cards"></div>
+      `;
+      const cardsEl = section.querySelector('.stage-cards');
+      if (items.length === 0) {
+        cardsEl.innerHTML = '<div class="empty-stage">Nothing here yet</div>';
+      } else {
+        items.forEach(p => cardsEl.appendChild(renderProject(p)));
+      }
+      stageList.appendChild(section);
+    });
+
+    root.querySelector('#new-btn').addEventListener('click', () => openEditModal(null));
+    root.querySelector('#reset-btn').addEventListener('click', () => {
+      if (confirm('Reset every task to Pending / 0% and clear all comments? Titles and stages stay as they are.')) {
+        projects = projects.map(p => ({ ...p, status: 'pending', progress: 0, comments: [] }));
+        save(); render();
+      }
+    });
+    root.querySelector('#export-btn').addEventListener('click', () => {
+      const blob = new Blob([JSON.stringify(projects, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'checkin-app-tracker.json';
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+  }
+
+  function cycleStatus(p) {
+    const idx = STATUSES.indexOf(p.status);
+    p.status = STATUSES[(idx + 1) % STATUSES.length];
+    if (p.status === 'complete') p.progress = 100;
+    if (p.status === 'pending') p.progress = 0;
+  }
+
+  function renderProject(p) {
+    const el = document.createElement('div');
+    el.className = 'project';
+    el.innerHTML = `
+      <div class="project-main">
+        <div class="project-head">
+          <div>
+            <div class="project-title">${escapeHtml(p.title)}</div>
+            <div class="project-cat">${escapeHtml(p.stage)}</div>
+          </div>
+          <div class="project-actions">
+            <button class="status-pill ${p.status}" data-act="cycle">${STATUS_LABEL[p.status]}</button>
+            <button class="icon-btn" data-act="edit" title="Edit">✎</button>
+            <button class="icon-btn danger" data-act="delete" title="Delete">✕</button>
+          </div>
+        </div>
+        <div class="project-desc">${escapeHtml(p.desc)}</div>
+        <div class="progress-row">
+          <div class="progress-track"><div class="progress-fill ${p.status}" style="width:${p.progress}%"></div></div>
+          <div class="progress-pct">${p.progress}%</div>
+        </div>
+        <div class="step-actions">
+          <button class="sbtn start" data-act="start">▶ Start</button>
+          <button class="sbtn stop" data-act="stop">■ Stop</button>
+          <button class="sbtn block" data-act="block">⛔ Block</button>
+        </div>
+        <div class="quick-actions">
+          <button class="qbtn done" data-act="done">✓ Done</button>
+        </div>
+      </div>
+      <div class="project-comments">
+        <div class="comments-heading">💬 Comments (${p.comments.length})</div>
+        <div class="comments-list">
+          ${p.comments.map(c => `
+            <div class="comment">
+              <div class="meta">${escapeHtml(c.author)} · ${escapeHtml(c.time)}</div>
+              <div class="body">${escapeHtml(c.text)}</div>
+            </div>`).join('') || '<div class="no-comments">No comments yet</div>'}
+        </div>
+        <div class="comment-add">
+          <input type="text" placeholder="Add comment…" data-role="comment-input">
+          <button data-act="post-comment">Post</button>
+        </div>
+      </div>
+    `;
+
+    el.querySelector('[data-act="cycle"]').addEventListener('click', () => { cycleStatus(p); save(); render(); });
+    el.querySelector('[data-act="edit"]').addEventListener('click', () => openEditModal(p));
+    el.querySelector('[data-act="delete"]').addEventListener('click', () => {
+      if (confirm('Delete this task?')) {
+        projects = projects.filter(x => x.id !== p.id);
+        save(); render();
+      }
+    });
+    el.querySelector('[data-act="done"]').addEventListener('click', () => {
+      p.progress = 100; p.status = 'complete';
+      save(); render();
+    });
+    el.querySelector('[data-act="start"]').addEventListener('click', () => {
+      p.status = 'in_progress';
+      if (p.progress === 0) p.progress = 5;
+      save(); render();
+    });
+    el.querySelector('[data-act="stop"]').addEventListener('click', () => {
+      p.status = 'pending';
+      save(); render();
+    });
+    el.querySelector('[data-act="block"]').addEventListener('click', () => {
+      p.status = 'blocked';
+      save(); render();
+    });
+    el.querySelector('[data-act="post-comment"]').addEventListener('click', () => {
+      const input = el.querySelector('[data-role="comment-input"]');
+      const text = input.value.trim();
+      if (!text) return;
+      p.comments.push({ author: 'Jude', time: nowStr(), text });
+      save(); render();
+    });
+
+    return el;
+  }
+
+  function openEditModal(existing) {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+      <div class="modal">
+        <h3>${existing ? 'Edit task' : 'New task'}</h3>
+        <div class="field">
+          <label>Title</label>
+          <input id="m-title" type="text" value="${existing ? escapeHtml(existing.title) : ''}">
+        </div>
+        <div class="field">
+          <label>Stage</label>
+          <select id="m-stage">
+            ${STAGES.map(s => `<option value="${escapeHtml(s)}" ${existing && existing.stage === s ? 'selected' : ''}>${escapeHtml(s)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="field">
+          <label>Description</label>
+          <textarea id="m-desc">${existing ? escapeHtml(existing.desc) : ''}</textarea>
+        </div>
+        <div class="field">
+          <label>Status</label>
+          <select id="m-status">
+            ${STATUSES.map(s => `<option value="${s}" ${existing && existing.status === s ? 'selected' : ''}>${STATUS_LABEL[s]}</option>`).join('')}
+          </select>
+        </div>
+        <div class="modal-actions">
+          <button class="btn btn-outline" id="m-cancel">Cancel</button>
+          <button class="btn btn-orange" id="m-save">Save</button>
+        </div>
+      </div>
+    `;
+    root.appendChild(overlay);
+    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+    overlay.querySelector('#m-cancel').addEventListener('click', () => overlay.remove());
+    overlay.querySelector('#m-save').addEventListener('click', () => {
+      const title = overlay.querySelector('#m-title').value.trim();
+      if (!title) { overlay.querySelector('#m-title').focus(); return; }
+      const stage = overlay.querySelector('#m-stage').value;
+      const desc = overlay.querySelector('#m-desc').value.trim();
+      const status = overlay.querySelector('#m-status').value;
+      if (existing) {
+        existing.title = title; existing.stage = stage; existing.desc = desc; existing.status = status;
+        if (status === 'complete') existing.progress = 100;
+        if (status === 'pending') existing.progress = 0;
+      } else {
+        projects.push(mk(title, stage, status, status === 'complete' ? 100 : 0, desc, []));
+      }
+      overlay.remove();
+      save(); render();
+    });
+  }
+
+  load();
+})();
+</script>
