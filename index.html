@@ -75,38 +75,6 @@
     margin: 14px 0 18px;
   }
 
-  #tracker-root .stats {
-    display: grid;
-    grid-template-columns: repeat(5, 1fr);
-    gap: 12px;
-    margin-bottom: 22px;
-  }
-  #tracker-root .stat-card {
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 16px 10px 12px;
-    text-align: center;
-    border-top: 3px solid var(--text-dim);
-  }
-  #tracker-root .stat-card.total { border-top-color: var(--orange); }
-  #tracker-root .stat-card.complete { border-top-color: var(--green); }
-  #tracker-root .stat-card.progress { border-top-color: var(--yellow); }
-  #tracker-root .stat-card.blocked { border-top-color: var(--red); }
-  #tracker-root .stat-card.pending { border-top-color: var(--blue); }
-  #tracker-root .stat-num { font-size: 26px; font-weight: 700; }
-  #tracker-root .stat-card.total .stat-num { color: var(--orange); }
-  #tracker-root .stat-card.complete .stat-num { color: var(--green); }
-  #tracker-root .stat-card.progress .stat-num { color: var(--yellow); }
-  #tracker-root .stat-card.blocked .stat-num { color: var(--red); }
-  #tracker-root .stat-card.pending .stat-num { color: var(--blue); }
-  #tracker-root .stat-lbl {
-    font-size: 10.5px;
-    color: var(--text-dim);
-    letter-spacing: 0.08em;
-    margin-top: 3px;
-  }
-
   #tracker-root .backlog-label {
     color: var(--orange-soft);
     font-size: 12px;
@@ -396,7 +364,6 @@
   #tracker-root .shared-note { font-size: 10.5px; color: var(--text-dim); text-align: center; margin-top: 20px; }
 
   @media (max-width: 900px) {
-    #tracker-root .stats { grid-template-columns: repeat(2, 1fr); }
     #tracker-root .pipeline { flex-direction: column; }
     #tracker-root .pipe-arrow { transform: rotate(90deg); padding: 4px 0; }
   }
@@ -427,7 +394,7 @@
       'Kickoff is on the calendar with the team.', []),
 
     mk('Decide check-in method: QR, NFC, or manual', 'Planning/Design', 'blocked', 0,
-     'Decide the best option here. We may consider using 2 options', []),
+      'Decide the best option here. We may consider using 2 options', []),
     mk('Define data privacy approach for member data', 'Planning/Design', 'pending', 0,
       'Attendance data is sensitive — needs a clear policy on storage, access, and retention before dev starts.', []),
     mk('Design device registration flow', 'Planning/Design', 'pending', 0,
@@ -465,83 +432,82 @@
   let projects = null;
   const root = document.getElementById('tracker-root');
 
-async function load() {
-  root.innerHTML = '<div class="loading">Loading tracker…</div>';
+  async function load() {
+    root.innerHTML = '<div class="loading">Loading tracker…</div>';
 
-  let saved = null;
+    let saved = null;
 
-  // Try Claude's shared storage first (only exists inside the artifact panel)
-  if (window.storage) {
-    try {
-      const res = await window.storage.get(STORAGE_KEY, true);
-      saved = res && res.value ? res.value : null;
-    } catch (e) {
-      // Key doesn't exist yet, or a transient error — fall through to
-      // localStorage instead of assuming there's no data anywhere.
-      saved = null;
+    // Try Claude's shared artifact storage first — this only exists when
+    // the artifact is running inside Claude's panel, not on GitHub Pages.
+    if (window.storage) {
+      try {
+        const res = await window.storage.get(STORAGE_KEY, true);
+        saved = res && res.value ? res.value : null;
+      } catch (e) {
+        // A missing key throws here rather than returning null — that's
+        // expected on first load, not a real error. Fall through to the
+        // localStorage check below instead of giving up.
+        saved = null;
+      }
     }
-  }
 
-  // Fall back to this browser's local storage (what actually works on GitHub Pages)
-  if (!saved) {
-    try {
-      saved = localStorage.getItem(STORAGE_KEY);
-    } catch (e) {
-      saved = null;
+    // Fall back to this browser's own local storage — this is what
+    // actually persists data when running as a static GitHub Pages site.
+    if (!saved) {
+      try {
+        saved = localStorage.getItem(STORAGE_KEY);
+      } catch (e) {
+        saved = null;
+      }
     }
-  }
 
-  if (saved) {
-    try {
-      projects = JSON.parse(saved);
-    } catch (e) {
-      // Corrupted data specifically — reseed rather than crash.
+    if (saved) {
+      try {
+        projects = JSON.parse(saved);
+      } catch (e) {
+        // Corrupted data specifically — reseed rather than crash the board.
+        projects = JSON.parse(JSON.stringify(SEED));
+        await save();
+      }
+    } else {
+      // Genuinely nothing saved anywhere yet — first time this browser
+      // has loaded the board.
       projects = JSON.parse(JSON.stringify(SEED));
       await save();
     }
-  } else {
-    // Genuinely nothing saved anywhere — first time this browser/session has loaded it.
-    projects = JSON.parse(JSON.stringify(SEED));
-    await save();
+
+    // Normalize in case of older/partial data shapes.
+    projects = projects.map(p => ({
+      ...p,
+      comments: Array.isArray(p.comments) ? p.comments : [],
+      status: STATUSES.includes(p.status) ? p.status : 'pending',
+      progress: Number.isFinite(Number(p.progress)) ? Number(p.progress) : 0,
+      desc: p.desc || '',
+      stage: STAGES.includes(p.stage) ? p.stage : STAGES[0]
+    }));
+
+    render();
   }
 
-  projects = projects.map(p => ({
-    ...p,
-    comments: Array.isArray(p.comments) ? p.comments : [],
-    status: STATUSES.includes(p.status) ? p.status : 'pending',
-    progress: Number.isFinite(Number(p.progress)) ? Number(p.progress) : 0,
-    desc: p.desc || '',
-    stage: STAGES.includes(p.stage) ? p.stage : STAGES[0]
-  }));
+  async function save() {
+    const data = JSON.stringify(projects);
 
-  render();
-}
-
-async function save() {
-  const data = JSON.stringify(projects);
-
-  try {
-    localStorage.setItem(STORAGE_KEY, data);
-  } catch (e) {
-    console.error('localStorage save failed', e);
-  }
-
-  try {
-    if (window.storage) {
-      await window.storage.set(STORAGE_KEY, data, true);
+    try {
+      localStorage.setItem(STORAGE_KEY, data);
+    } catch (e) {
+      console.error('localStorage save failed', e);
     }
-  } catch (e) {
-    console.error('window.storage save failed', e);
+
+    if (window.storage) {
+      try {
+        await window.storage.set(STORAGE_KEY, data, true);
+      } catch (e) {
+        console.error('window.storage save failed', e);
+      }
+    }
   }
-}
 
   function render() {
-    const total = projects.length;
-    const complete = projects.filter(p => p.status === 'complete').length;
-    const inProgress = projects.filter(p => p.status === 'in_progress').length;
-    const blocked = projects.filter(p => p.status === 'blocked').length;
-    const pending = projects.filter(p => p.status === 'pending').length;
-
     root.innerHTML = `
       <div class="topbar">
         <div>
@@ -558,7 +524,7 @@ async function save() {
       <div class="backlog-label">📋 PRODUCT BACKLOG WITH THE STEPS</div>
       <div class="pipeline" id="pipeline"></div>
       <div id="stage-list"></div>
-      <div class="shared-note">This board is shared — anyone with this artifact can see and edit it.</div>
+      <div class="shared-note">Saved to this browser. Click Export any time to save a backup file.</div>
     `;
 
     const pipelineEl = root.querySelector('#pipeline');
@@ -704,6 +670,12 @@ async function save() {
     });
 
     return el;
+  }
+
+  function escapeHtml(s) {
+    const d = document.createElement('div');
+    d.textContent = s || '';
+    return d.innerHTML;
   }
 
   function openEditModal(existing) {
