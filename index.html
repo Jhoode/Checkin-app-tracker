@@ -48,10 +48,11 @@
     color: var(--green);
     margin-top: 4px;
   }
+  #tracker-root .connected.offline { color: var(--red); }
   #tracker-root .connected .dot {
     width: 7px; height: 7px; border-radius: 50%;
-    background: var(--green);
-    box-shadow: 0 0 6px var(--green);
+    background: currentColor;
+    box-shadow: 0 0 6px currentColor;
   }
   #tracker-root .top-actions { display: flex; gap: 8px; flex-wrap: wrap; }
   #tracker-root .btn {
@@ -217,6 +218,7 @@
   #tracker-root .status-pill.in_progress { background: rgba(232,194,46,0.18); color: var(--yellow); }
   #tracker-root .status-pill.blocked { background: rgba(229,72,77,0.18); color: var(--red); }
   #tracker-root .status-pill.pending { background: rgba(75,159,232,0.18); color: var(--blue); }
+  #tracker-root .status-pill[disabled] { opacity: 0.5; cursor: default; }
 
   #tracker-root .icon-btn {
     background: var(--panel-2);
@@ -362,6 +364,15 @@
   }
   #tracker-root .loading { text-align: center; color: var(--text-dim); padding: 40px; font-size: 13px; }
   #tracker-root .shared-note { font-size: 10.5px; color: var(--text-dim); text-align: center; margin-top: 20px; }
+  #tracker-root .error-banner {
+    background: rgba(229,72,77,0.15);
+    border: 1px solid var(--red);
+    color: #ffb3b3;
+    font-size: 12.5px;
+    padding: 10px 14px;
+    border-radius: 8px;
+    margin-bottom: 16px;
+  }
 
   @media (max-width: 900px) {
     #tracker-root .pipeline { flex-direction: column; }
@@ -369,368 +380,395 @@
   }
 </style>
 
-<script>
-(function() {
-  const STORAGE_KEY = 'checkin-app-tracker-v3';
-  const STATUSES = ['pending', 'in_progress', 'blocked', 'complete'];
-  const STATUS_LABEL = { pending: 'PENDING', in_progress: 'IN PROGRESS', blocked: 'BLOCKED', complete: 'COMPLETE' };
-  const STAGES = ['Requirement Gathering', 'Planning/Design', 'Development', 'Testing', 'Deployment', 'Maintenance'];
+<script type="module">
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-  function mk(title, stage, status, progress, desc, comments) {
-    return {
-      id: 'p' + Math.random().toString(36).slice(2, 10),
-      title, stage, status, progress, desc,
-      comments: comments || []
-    };
-  }
-  function nowStr() {
-    return new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
-  }
+// ── Fill these in with your Supabase project's values ──────────────────
+// Project Settings → API in your Supabase dashboard.
+const SUPABASE_URL = 'https://zevnpzyjgwqucgxcqiyn.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inpldm5wenlqZ3dxdWNneGNxaXluIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMyMTg5ODgsImV4cCI6MjA5ODc5NDk4OH0.ajbFb-He8LFHixzyicN-Y5B-Itypv13y-qmTbwWwDH4';
+// ─────────────────────────────────────────────────────────────────────
 
-  const SEED = [
-    mk('Interview pastoral staff on visit-tracking needs', 'Requirement Gathering', 'pending', 0,
-      'Talk to pastoral staff about what they actually need visit data for before locking requirements.', []),
-    mk('Kickoff meeting scheduled', 'Requirement Gathering', 'pending', 0,
-      'Kickoff is on the calendar with the team.', []),
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const TABLE = 'tracker_tasks';
 
-    mk('Decide check-in method: QR, NFC, or manual', 'Planning/Design', 'blocked', 0,
-      'Decide the best option here. We may consider using 2 options', []),
-    mk('Define data privacy approach for member data', 'Planning/Design', 'pending', 0,
-      'Attendance data is sensitive — needs a clear policy on storage, access, and retention before dev starts.', []),
-    mk('Design device registration flow', 'Planning/Design', 'pending', 0,
-      'Define how the initial QR scan pairs a member to their phone/app install so later check-ins can happen automatically.', []),
-    mk('Decide geofencing vs. Bluetooth beacons', 'Planning/Design', 'pending', 0,
-      'GPS geofencing is simpler and hardware-free but less precise indoors. BLE beacons are more precise but need hardware and upkeep. Pick one before building.', []),
-    mk('Design database schema: members, visits, services', 'Planning/Design', 'pending', 0,
-      'Core tables for members, services, and visit check-ins.', []),
-    mk('Draft timeline and task owners for kickoff', 'Planning/Design', 'pending', 0,
-      'Timeline and owners to walk through at the kickoff meeting.', []),
+const STATUSES = ['pending', 'in_progress', 'blocked', 'complete'];
+const STATUS_LABEL = { pending: 'PENDING', in_progress: 'IN PROGRESS', blocked: 'BLOCKED', complete: 'COMPLETE' };
+const STAGES = ['Requirement Gathering', 'Planning/Design', 'Development', 'Testing', 'Deployment', 'Maintenance'];
 
-    mk('Choose tech stack', 'Development', 'pending', 0,
-      'Landed on stack for the MVP.', []),
-    mk('Set up shared repo and dev environment', 'Development', 'pending', 0,
-      'Repo, branch strategy, and local dev setup for the team.', []),
-    mk('Build check-in screen and admin dashboard', 'Development', 'pending', 0,
-      'Core check-in flow plus a simple admin view for attendance records.', []),
-    mk('Build consent screen for location tracking', 'Development', 'pending', 0,
-      'Clear, explicit consent flow before background location or Bluetooth is enabled, explaining what is tracked and why.', []),
-    mk('Handle background permission flow', 'Development', 'pending', 0,
-      'OS-level location/Bluetooth permission requests, plus a graceful fallback if a member declines.', []),
-    mk('Build manual check-in fallback', 'Development', 'pending', 0,
-      'Required path for anyone who declines location/Bluetooth permissions — a simple screen to check in by hand instead of automatically.', []),
+function mk(title, stage, status, progress, description, comments) {
+  return {
+    id: 'p' + Math.random().toString(36).slice(2, 10),
+    title, stage, status, progress, description,
+    comments: comments || []
+  };
+}
+function nowStr() {
+  return new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
 
-    mk('Test check-in flow with a few church members', 'Testing', 'pending', 0,
-      'Small pilot test before rolling out to the full congregation.', []),
+const SEED = [
+  mk('Interview pastoral staff on visit-tracking needs', 'Requirement Gathering', 'pending', 0,
+    'Talk to pastoral staff about what they actually need visit data for before locking requirements.', []),
+  mk('Kickoff meeting scheduled', 'Requirement Gathering', 'pending', 0,
+    'Kickoff is on the calendar with the team.', []),
 
-    mk('Deploy MVP for a live service', 'Deployment', 'pending', 0,
-      'Ship the first working version and use it during an actual service.', []),
+  mk('Decide check-in method: QR, NFC, or manual', 'Planning/Design', 'blocked', 0,
+    'Decide the best option here. We may consider using 2 options', []),
+  mk('Define data privacy approach for member data', 'Planning/Design', 'pending', 0,
+    'Attendance data is sensitive — needs a clear policy on storage, access, and retention before dev starts.', []),
+  mk('Design device registration flow', 'Planning/Design', 'pending', 0,
+    'Define how the initial QR scan pairs a member to their phone/app install so later check-ins can happen automatically.', []),
+  mk('Decide geofencing vs. Bluetooth beacons', 'Planning/Design', 'pending', 0,
+    'GPS geofencing is simpler and hardware-free but less precise indoors. BLE beacons are more precise but need hardware and upkeep. Pick one before building.', []),
+  mk('Design database schema: members, visits, services', 'Planning/Design', 'pending', 0,
+    'Core tables for members, services, and visit check-ins.', []),
+  mk('Draft timeline and task owners for kickoff', 'Planning/Design', 'pending', 0,
+    'Timeline and owners to walk through at the kickoff meeting.', []),
 
-    mk('Set up ongoing support and feedback loop', 'Maintenance', 'pending', 0,
-      'Way for members and staff to report issues or request changes after launch.', [])
-  ];
+  mk('Choose tech stack', 'Development', 'pending', 0,
+    'Landed on stack for the MVP.', []),
+  mk('Set up shared repo and dev environment', 'Development', 'pending', 0,
+    'Repo, branch strategy, and local dev setup for the team.', []),
+  mk('Build check-in screen and admin dashboard', 'Development', 'pending', 0,
+    'Core check-in flow plus a simple admin view for attendance records.', []),
+  mk('Build consent screen for location tracking', 'Development', 'pending', 0,
+    'Clear, explicit consent flow before background location or Bluetooth is enabled, explaining what is tracked and why.', []),
+  mk('Handle background permission flow', 'Development', 'pending', 0,
+    'OS-level location/Bluetooth permission requests, plus a graceful fallback if a member declines.', []),
+  mk('Build manual check-in fallback', 'Development', 'pending', 0,
+    'Required path for anyone who declines location/Bluetooth permissions — a simple screen to check in by hand instead of automatically.', []),
 
-  let projects = null;
-  const root = document.getElementById('tracker-root');
+  mk('Test check-in flow with a few church members', 'Testing', 'pending', 0,
+    'Small pilot test before rolling out to the full congregation.', []),
 
-  async function load() {
-    root.innerHTML = '<div class="loading">Loading tracker…</div>';
+  mk('Deploy MVP for a live service', 'Deployment', 'pending', 0,
+    'Ship the first working version and use it during an actual service.', []),
 
-    let saved = null;
+  mk('Set up ongoing support and feedback loop', 'Maintenance', 'pending', 0,
+    'Way for members and staff to report issues or request changes after launch.', [])
+];
 
-    // Try Claude's shared artifact storage first — this only exists when
-    // the artifact is running inside Claude's panel, not on GitHub Pages.
-    if (window.storage) {
-      try {
-        const res = await window.storage.get(STORAGE_KEY, true);
-        saved = res && res.value ? res.value : null;
-      } catch (e) {
-        // A missing key throws here rather than returning null — that's
-        // expected on first load, not a real error. Fall through to the
-        // localStorage check below instead of giving up.
-        saved = null;
-      }
-    }
+let projects = [];
+let connectionOk = true;
+const root = document.getElementById('tracker-root');
+const CACHE_KEY = 'checkin-app-tracker-cache';
 
-    // Fall back to this browser's own local storage — this is what
-    // actually persists data when running as a static GitHub Pages site.
-    if (!saved) {
-      try {
-        saved = localStorage.getItem(STORAGE_KEY);
-      } catch (e) {
-        saved = null;
-      }
-    }
+function normalize(rows) {
+  return rows.map(p => ({
+    ...p,
+    comments: Array.isArray(p.comments) ? p.comments : [],
+    status: STATUSES.includes(p.status) ? p.status : 'pending',
+    progress: Number.isFinite(Number(p.progress)) ? Number(p.progress) : 0,
+    description: p.description || '',
+    stage: STAGES.includes(p.stage) ? p.stage : STAGES[0]
+  }));
+}
 
-    if (saved) {
-      try {
-        projects = JSON.parse(saved);
-      } catch (e) {
-        // Corrupted data specifically — reseed rather than crash the board.
-        projects = JSON.parse(JSON.stringify(SEED));
-        await save();
-      }
+async function load() {
+  root.innerHTML = '<div class="loading">Loading tracker…</div>';
+
+  try {
+    const { data, error } = await supabase
+      .from(TABLE)
+      .select('*')
+      .order('created_at', { ascending: true });
+
+    if (error) throw error;
+
+    if (!data || data.length === 0) {
+      // Table's empty — first time anyone's loaded this board. Seed it.
+      const { error: insertError } = await supabase.from(TABLE).insert(SEED);
+      if (insertError) throw insertError;
+      projects = normalize(SEED);
     } else {
-      // Genuinely nothing saved anywhere yet — first time this browser
-      // has loaded the board.
-      projects = JSON.parse(JSON.stringify(SEED));
-      await save();
+      projects = normalize(data);
     }
 
-    // Normalize in case of older/partial data shapes.
-    projects = projects.map(p => ({
-      ...p,
-      comments: Array.isArray(p.comments) ? p.comments : [],
-      status: STATUSES.includes(p.status) ? p.status : 'pending',
-      progress: Number.isFinite(Number(p.progress)) ? Number(p.progress) : 0,
-      desc: p.desc || '',
-      stage: STAGES.includes(p.stage) ? p.stage : STAGES[0]
-    }));
-
-    render();
-  }
-
-  async function save() {
-    const data = JSON.stringify(projects);
-
+    connectionOk = true;
+    localStorage.setItem(CACHE_KEY, JSON.stringify(projects));
+  } catch (e) {
+    console.error('Supabase load failed, falling back to cache:', e);
+    connectionOk = false;
     try {
-      localStorage.setItem(STORAGE_KEY, data);
-    } catch (e) {
-      console.error('localStorage save failed', e);
-    }
-
-    if (window.storage) {
-      try {
-        await window.storage.set(STORAGE_KEY, data, true);
-      } catch (e) {
-        console.error('window.storage save failed', e);
-      }
+      const cached = localStorage.getItem(CACHE_KEY);
+      projects = cached ? normalize(JSON.parse(cached)) : normalize(SEED);
+    } catch {
+      projects = normalize(SEED);
     }
   }
 
-  function render() {
-    root.innerHTML = `
-      <div class="topbar">
+  render();
+}
+
+function subscribeToChanges() {
+  supabase
+    .channel('tracker-tasks-live')
+    .on('postgres_changes', { event: '*', schema: 'public', table: TABLE }, () => {
+      // Simplest correct approach: any change from anyone, just refetch.
+      load();
+    })
+    .subscribe();
+}
+
+async function insertTask(task) {
+  const { error } = await supabase.from(TABLE).insert(task);
+  if (error) {
+    alert("Couldn't save — check your connection and try again.");
+    console.error(error);
+    return false;
+  }
+  return true;
+}
+
+async function updateTask(id, patch) {
+  const { error } = await supabase.from(TABLE).update(patch).eq('id', id);
+  if (error) {
+    alert("Couldn't save — check your connection and try again.");
+    console.error(error);
+    return false;
+  }
+  return true;
+}
+
+async function deleteTask(id) {
+  const { error } = await supabase.from(TABLE).delete().eq('id', id);
+  if (error) {
+    alert("Couldn't delete — check your connection and try again.");
+    console.error(error);
+    return false;
+  }
+  return true;
+}
+
+function render() {
+  root.innerHTML = `
+    <div class="topbar">
+      <div>
+        <h1>⚡ Check-In App Tracker</h1>
+        <div class="connected ${connectionOk ? '' : 'offline'}">
+          <span class="dot"></span>${connectionOk ? 'Connected' : 'Offline — showing last saved copy'}
+        </div>
+      </div>
+      <div class="top-actions">
+        <button class="btn btn-outline" id="export-btn">⬇ Export</button>
+        <button class="btn btn-outline" id="reset-btn">Reset</button>
+        <button class="btn btn-orange" id="new-btn">+ New Task</button>
+      </div>
+    </div>
+    <hr class="divider">
+    ${!connectionOk ? '<div class="error-banner">Couldn\'t reach the shared board — showing your last saved copy. Changes won\'t save until connection is back.</div>' : ''}
+    <div class="backlog-label">📋 PRODUCT BACKLOG WITH THE STEPS</div>
+    <div class="pipeline" id="pipeline"></div>
+    <div id="stage-list"></div>
+    <div class="shared-note">Live and shared — everyone viewing this page sees the same board in real time.</div>
+  `;
+
+  const pipelineEl = root.querySelector('#pipeline');
+  STAGES.forEach((stage, i) => {
+    const stageItems = projects.filter(p => p.stage === stage);
+    const count = stageItems.length;
+    const isComplete = count > 0 && stageItems.every(p => p.status === 'complete');
+    const stageEl = document.createElement('div');
+    stageEl.className = 'pipe-stage' + (isComplete ? ' complete' : '');
+    stageEl.innerHTML = `<div class="stage-name">${escapeHtml(stage)}</div><div class="stage-count">${count} task${count === 1 ? '' : 's'}</div>`;
+    pipelineEl.appendChild(stageEl);
+    if (i < STAGES.length - 1) {
+      const arrow = document.createElement('div');
+      arrow.className = 'pipe-arrow';
+      arrow.textContent = '---->';
+      pipelineEl.appendChild(arrow);
+    }
+  });
+
+  const stageList = root.querySelector('#stage-list');
+  STAGES.forEach((stage, i) => {
+    const items = projects.filter(p => p.stage === stage);
+    const section = document.createElement('div');
+    section.className = 'stage-section';
+    section.innerHTML = `
+      <div class="stage-header">
+        <span class="idx">${i + 1}.</span>
+        <span class="name">${escapeHtml(stage)}</span>
+        <span class="count">(${items.length})</span>
+      </div>
+      <div class="stage-cards"></div>
+    `;
+    const cardsEl = section.querySelector('.stage-cards');
+    if (items.length === 0) {
+      cardsEl.innerHTML = '<div class="empty-stage">Nothing here yet</div>';
+    } else {
+      items.forEach(p => cardsEl.appendChild(renderProject(p)));
+    }
+    stageList.appendChild(section);
+  });
+
+  root.querySelector('#new-btn').addEventListener('click', () => openEditModal(null));
+  root.querySelector('#reset-btn').addEventListener('click', async () => {
+    if (!confirm('Reset every task to Pending / 0% and clear all comments? Titles and stages stay as they are.')) return;
+    for (const p of projects) {
+      await updateTask(p.id, { status: 'pending', progress: 0, comments: [] });
+    }
+    load();
+  });
+  root.querySelector('#export-btn').addEventListener('click', () => {
+    const blob = new Blob([JSON.stringify(projects, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'checkin-app-tracker.json';
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+}
+
+function nextStatus(status) {
+  const idx = STATUSES.indexOf(status);
+  return STATUSES[(idx + 1) % STATUSES.length];
+}
+
+function renderProject(p) {
+  const el = document.createElement('div');
+  el.className = 'project';
+  el.innerHTML = `
+    <div class="project-main">
+      <div class="project-head">
         <div>
-          <h1>⚡ Check-In App Tracker</h1>
-          <div class="connected"><span class="dot"></span>Connected</div>
+          <div class="project-title">${escapeHtml(p.title)}</div>
+          <div class="project-cat">${escapeHtml(p.stage)}</div>
         </div>
-        <div class="top-actions">
-          <button class="btn btn-outline" id="export-btn">⬇ Export</button>
-          <button class="btn btn-outline" id="reset-btn">Reset</button>
-          <button class="btn btn-orange" id="new-btn">+ New Task</button>
-        </div>
-      </div>
-      <hr class="divider">
-      <div class="backlog-label">📋 PRODUCT BACKLOG WITH THE STEPS</div>
-      <div class="pipeline" id="pipeline"></div>
-      <div id="stage-list"></div>
-      <div class="shared-note">Saved to this browser. Click Export any time to save a backup file.</div>
-    `;
-
-    const pipelineEl = root.querySelector('#pipeline');
-    STAGES.forEach((stage, i) => {
-      const stageItems = projects.filter(p => p.stage === stage);
-      const count = stageItems.length;
-      const isComplete = count > 0 && stageItems.every(p => p.status === 'complete');
-      const stageEl = document.createElement('div');
-      stageEl.className = 'pipe-stage' + (isComplete ? ' complete' : '');
-      stageEl.innerHTML = `<div class="stage-name">${escapeHtml(stage)}</div><div class="stage-count">${count} task${count === 1 ? '' : 's'}</div>`;
-      pipelineEl.appendChild(stageEl);
-      if (i < STAGES.length - 1) {
-        const arrow = document.createElement('div');
-        arrow.className = 'pipe-arrow';
-        arrow.textContent = '---->';
-        pipelineEl.appendChild(arrow);
-      }
-    });
-
-    const stageList = root.querySelector('#stage-list');
-    STAGES.forEach((stage, i) => {
-      const items = projects.filter(p => p.stage === stage);
-      const section = document.createElement('div');
-      section.className = 'stage-section';
-      section.innerHTML = `
-        <div class="stage-header">
-          <span class="idx">${i + 1}.</span>
-          <span class="name">${escapeHtml(stage)}</span>
-          <span class="count">(${items.length})</span>
-        </div>
-        <div class="stage-cards"></div>
-      `;
-      const cardsEl = section.querySelector('.stage-cards');
-      if (items.length === 0) {
-        cardsEl.innerHTML = '<div class="empty-stage">Nothing here yet</div>';
-      } else {
-        items.forEach(p => cardsEl.appendChild(renderProject(p)));
-      }
-      stageList.appendChild(section);
-    });
-
-    root.querySelector('#new-btn').addEventListener('click', () => openEditModal(null));
-    root.querySelector('#reset-btn').addEventListener('click', () => {
-      if (confirm('Reset every task to Pending / 0% and clear all comments? Titles and stages stay as they are.')) {
-        projects = projects.map(p => ({ ...p, status: 'pending', progress: 0, comments: [] }));
-        save(); render();
-      }
-    });
-    root.querySelector('#export-btn').addEventListener('click', () => {
-      const blob = new Blob([JSON.stringify(projects, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url; a.download = 'checkin-app-tracker.json';
-      a.click();
-      URL.revokeObjectURL(url);
-    });
-  }
-
-  function cycleStatus(p) {
-    const idx = STATUSES.indexOf(p.status);
-    p.status = STATUSES[(idx + 1) % STATUSES.length];
-    if (p.status === 'complete') p.progress = 100;
-    if (p.status === 'pending') p.progress = 0;
-  }
-
-  function renderProject(p) {
-    const el = document.createElement('div');
-    el.className = 'project';
-    el.innerHTML = `
-      <div class="project-main">
-        <div class="project-head">
-          <div>
-            <div class="project-title">${escapeHtml(p.title)}</div>
-            <div class="project-cat">${escapeHtml(p.stage)}</div>
-          </div>
-          <div class="project-actions">
-            <button class="status-pill ${p.status}" data-act="cycle">${STATUS_LABEL[p.status]}</button>
-            <button class="icon-btn" data-act="edit" title="Edit">✎</button>
-            <button class="icon-btn danger" data-act="delete" title="Delete">✕</button>
-          </div>
-        </div>
-        <div class="project-desc">${escapeHtml(p.desc)}</div>
-        <div class="progress-row">
-          <div class="progress-track"><div class="progress-fill ${p.status}" style="width:${p.progress}%"></div></div>
-          <div class="progress-pct">${p.progress}%</div>
-        </div>
-        <div class="step-actions">
-          <button class="sbtn start" data-act="start">▶ Start</button>
-          <button class="sbtn stop" data-act="stop">■ Stop</button>
-          <button class="sbtn block" data-act="block">⛔ Block</button>
-        </div>
-        <div class="quick-actions">
-          <button class="qbtn done" data-act="done">✓ Done</button>
+        <div class="project-actions">
+          <button class="status-pill ${p.status}" data-act="cycle">${STATUS_LABEL[p.status]}</button>
+          <button class="icon-btn" data-act="edit" title="Edit">✎</button>
+          <button class="icon-btn danger" data-act="delete" title="Delete">✕</button>
         </div>
       </div>
-      <div class="project-comments">
-        <div class="comments-heading">💬 Comments (${(p.comments || []).length})</div>
-        <div class="comments-list">
-          ${(p.comments || []).map(c => `
-            <div class="comment">
-              <div class="meta">${escapeHtml(c.author)} · ${escapeHtml(c.time)}</div>
-              <div class="body">${escapeHtml(c.text)}</div>
-            </div>`).join('') || '<div class="no-comments">No comments yet</div>'}
-        </div>
-        <div class="comment-add">
-          <input type="text" placeholder="Add comment…" data-role="comment-input">
-          <button data-act="post-comment">Post</button>
-        </div>
+      <div class="project-desc">${escapeHtml(p.description)}</div>
+      <div class="progress-row">
+        <div class="progress-track"><div class="progress-fill ${p.status}" style="width:${p.progress}%"></div></div>
+        <div class="progress-pct">${p.progress}%</div>
       </div>
-    `;
-
-    el.querySelector('[data-act="cycle"]').addEventListener('click', () => { cycleStatus(p); save(); render(); });
-    el.querySelector('[data-act="edit"]').addEventListener('click', () => openEditModal(p));
-    el.querySelector('[data-act="delete"]').addEventListener('click', () => {
-      if (confirm('Delete this task?')) {
-        projects = projects.filter(x => x.id !== p.id);
-        save(); render();
-      }
-    });
-    el.querySelector('[data-act="done"]').addEventListener('click', () => {
-      p.progress = 100; p.status = 'complete';
-      save(); render();
-    });
-    el.querySelector('[data-act="start"]').addEventListener('click', () => {
-      p.status = 'in_progress';
-      if (p.progress === 0) p.progress = 5;
-      save(); render();
-    });
-    el.querySelector('[data-act="stop"]').addEventListener('click', () => {
-      p.status = 'pending';
-      save(); render();
-    });
-    el.querySelector('[data-act="block"]').addEventListener('click', () => {
-      p.status = 'blocked';
-      save(); render();
-    });
-    el.querySelector('[data-act="post-comment"]').addEventListener('click', () => {
-      const input = el.querySelector('[data-role="comment-input"]');
-      const text = input.value.trim();
-      if (!text) return;
-      p.comments.push({ author: 'Jude', time: nowStr(), text });
-      save(); render();
-    });
-
-    return el;
-  }
-
-  function escapeHtml(s) {
-    const d = document.createElement('div');
-    d.textContent = s || '';
-    return d.innerHTML;
-  }
-
-  function openEditModal(existing) {
-    const overlay = document.createElement('div');
-    overlay.className = 'modal-overlay';
-    overlay.innerHTML = `
-      <div class="modal">
-        <h3>${existing ? 'Edit task' : 'New task'}</h3>
-        <div class="field">
-          <label>Title</label>
-          <input id="m-title" type="text" value="${existing ? escapeHtml(existing.title) : ''}">
-        </div>
-        <div class="field">
-          <label>Stage</label>
-          <select id="m-stage">
-            ${STAGES.map(s => `<option value="${escapeHtml(s)}" ${existing && existing.stage === s ? 'selected' : ''}>${escapeHtml(s)}</option>`).join('')}
-          </select>
-        </div>
-        <div class="field">
-          <label>Description</label>
-          <textarea id="m-desc">${existing ? escapeHtml(existing.desc) : ''}</textarea>
-        </div>
-        <div class="field">
-          <label>Status</label>
-          <select id="m-status">
-            ${STATUSES.map(s => `<option value="${s}" ${existing && existing.status === s ? 'selected' : ''}>${STATUS_LABEL[s]}</option>`).join('')}
-          </select>
-        </div>
-        <div class="modal-actions">
-          <button class="btn btn-outline" id="m-cancel">Cancel</button>
-          <button class="btn btn-orange" id="m-save">Save</button>
-        </div>
+      <div class="step-actions">
+        <button class="sbtn start" data-act="start">▶ Start</button>
+        <button class="sbtn stop" data-act="stop">■ Stop</button>
+        <button class="sbtn block" data-act="block">⛔ Block</button>
       </div>
-    `;
-    root.appendChild(overlay);
-    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
-    overlay.querySelector('#m-cancel').addEventListener('click', () => overlay.remove());
-    overlay.querySelector('#m-save').addEventListener('click', () => {
-      const title = overlay.querySelector('#m-title').value.trim();
-      if (!title) { overlay.querySelector('#m-title').focus(); return; }
-      const stage = overlay.querySelector('#m-stage').value;
-      const desc = overlay.querySelector('#m-desc').value.trim();
-      const status = overlay.querySelector('#m-status').value;
-      if (existing) {
-        existing.title = title; existing.stage = stage; existing.desc = desc; existing.status = status;
-        if (status === 'complete') existing.progress = 100;
-        if (status === 'pending') existing.progress = 0;
-      } else {
-        projects.push(mk(title, stage, status, status === 'complete' ? 100 : 0, desc, []));
-      }
-      overlay.remove();
-      save(); render();
-    });
-  }
+      <div class="quick-actions">
+        <button class="qbtn done" data-act="done">✓ Done</button>
+      </div>
+    </div>
+    <div class="project-comments">
+      <div class="comments-heading">💬 Comments (${(p.comments || []).length})</div>
+      <div class="comments-list">
+        ${(p.comments || []).map(c => `
+          <div class="comment">
+            <div class="meta">${escapeHtml(c.author)} · ${escapeHtml(c.time)}</div>
+            <div class="body">${escapeHtml(c.text)}</div>
+          </div>`).join('') || '<div class="no-comments">No comments yet</div>'}
+      </div>
+      <div class="comment-add">
+        <input type="text" placeholder="Add comment…" data-role="comment-input">
+        <button data-act="post-comment">Post</button>
+      </div>
+    </div>
+  `;
 
-  load();
-})();
+  el.querySelector('[data-act="cycle"]').addEventListener('click', async () => {
+    const newStatus = nextStatus(p.status);
+    const patch = { status: newStatus };
+    if (newStatus === 'complete') patch.progress = 100;
+    if (newStatus === 'pending') patch.progress = 0;
+    if (await updateTask(p.id, patch)) load();
+  });
+  el.querySelector('[data-act="edit"]').addEventListener('click', () => openEditModal(p));
+  el.querySelector('[data-act="delete"]').addEventListener('click', async () => {
+    if (!confirm('Delete this task?')) return;
+    if (await deleteTask(p.id)) load();
+  });
+  el.querySelector('[data-act="done"]').addEventListener('click', async () => {
+    if (await updateTask(p.id, { progress: 100, status: 'complete' })) load();
+  });
+  el.querySelector('[data-act="start"]').addEventListener('click', async () => {
+    const patch = { status: 'in_progress' };
+    if (p.progress === 0) patch.progress = 5;
+    if (await updateTask(p.id, patch)) load();
+  });
+  el.querySelector('[data-act="stop"]').addEventListener('click', async () => {
+    if (await updateTask(p.id, { status: 'pending' })) load();
+  });
+  el.querySelector('[data-act="block"]').addEventListener('click', async () => {
+    if (await updateTask(p.id, { status: 'blocked' })) load();
+  });
+  el.querySelector('[data-act="post-comment"]').addEventListener('click', async () => {
+    const input = el.querySelector('[data-role="comment-input"]');
+    const text = input.value.trim();
+    if (!text) return;
+    const newComments = [...(p.comments || []), { author: 'Jude', time: nowStr(), text }];
+    if (await updateTask(p.id, { comments: newComments })) load();
+  });
+
+  return el;
+}
+
+function escapeHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s || '';
+  return d.innerHTML;
+}
+
+function openEditModal(existing) {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal">
+      <h3>${existing ? 'Edit task' : 'New task'}</h3>
+      <div class="field">
+        <label>Title</label>
+        <input id="m-title" type="text" value="${existing ? escapeHtml(existing.title) : ''}">
+      </div>
+      <div class="field">
+        <label>Stage</label>
+        <select id="m-stage">
+          ${STAGES.map(s => `<option value="${escapeHtml(s)}" ${existing && existing.stage === s ? 'selected' : ''}>${escapeHtml(s)}</option>`).join('')}
+        </select>
+      </div>
+      <div class="field">
+        <label>Description</label>
+        <textarea id="m-desc">${existing ? escapeHtml(existing.description) : ''}</textarea>
+      </div>
+      <div class="field">
+        <label>Status</label>
+        <select id="m-status">
+          ${STATUSES.map(s => `<option value="${s}" ${existing && existing.status === s ? 'selected' : ''}>${STATUS_LABEL[s]}</option>`).join('')}
+        </select>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-outline" id="m-cancel">Cancel</button>
+        <button class="btn btn-orange" id="m-save">Save</button>
+      </div>
+    </div>
+  `;
+  root.appendChild(overlay);
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  overlay.querySelector('#m-cancel').addEventListener('click', () => overlay.remove());
+  overlay.querySelector('#m-save').addEventListener('click', async () => {
+    const title = overlay.querySelector('#m-title').value.trim();
+    if (!title) { overlay.querySelector('#m-title').focus(); return; }
+    const stage = overlay.querySelector('#m-stage').value;
+    const description = overlay.querySelector('#m-desc').value.trim();
+    const status = overlay.querySelector('#m-status').value;
+    const progress = status === 'complete' ? 100 : status === 'pending' ? 0 : (existing ? existing.progress : 0);
+
+    let ok;
+    if (existing) {
+      ok = await updateTask(existing.id, { title, stage, description, status, progress });
+    } else {
+      ok = await insertTask(mk(title, stage, status, progress, description, []));
+    }
+    overlay.remove();
+    if (ok) load();
+  });
+}
+
+load();
+subscribeToChanges();
 </script>
