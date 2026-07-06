@@ -465,28 +465,42 @@
   let projects = null;
   const root = document.getElementById('tracker-root');
 
-  async function load() {
+async function load() {
   root.innerHTML = '<div class="loading">Loading tracker…</div>';
 
-  try {
-    let saved = null;
+  let saved = null;
 
-    if (window.storage) {
+  // Try Claude's shared storage first (only exists inside the artifact panel)
+  if (window.storage) {
+    try {
       const res = await window.storage.get(STORAGE_KEY, true);
       saved = res && res.value ? res.value : null;
+    } catch (e) {
+      // Key doesn't exist yet, or a transient error — fall through to
+      // localStorage instead of assuming there's no data anywhere.
+      saved = null;
     }
+  }
 
-    if (!saved) {
+  // Fall back to this browser's local storage (what actually works on GitHub Pages)
+  if (!saved) {
+    try {
       saved = localStorage.getItem(STORAGE_KEY);
+    } catch (e) {
+      saved = null;
     }
+  }
 
-    if (saved) {
+  if (saved) {
+    try {
       projects = JSON.parse(saved);
-    } else {
+    } catch (e) {
+      // Corrupted data specifically — reseed rather than crash.
       projects = JSON.parse(JSON.stringify(SEED));
-      await save(); // important: save seeded data immediately
+      await save();
     }
-  } catch (e) {
+  } else {
+    // Genuinely nothing saved anywhere — first time this browser/session has loaded it.
     projects = JSON.parse(JSON.stringify(SEED));
     await save();
   }
