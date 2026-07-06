@@ -467,14 +467,30 @@
 
   async function load() {
   root.innerHTML = '<div class="loading">Loading tracker…</div>';
+
   try {
-    const res = await window.storage.get(STORAGE_KEY, true);
-    projects = res && res.value ? JSON.parse(res.value) : JSON.parse(JSON.stringify(SEED));
+    let saved = null;
+
+    if (window.storage) {
+      const res = await window.storage.get(STORAGE_KEY, true);
+      saved = res && res.value ? res.value : null;
+    }
+
+    if (!saved) {
+      saved = localStorage.getItem(STORAGE_KEY);
+    }
+
+    if (saved) {
+      projects = JSON.parse(saved);
+    } else {
+      projects = JSON.parse(JSON.stringify(SEED));
+      await save(); // important: save seeded data immediately
+    }
   } catch (e) {
     projects = JSON.parse(JSON.stringify(SEED));
+    await save();
   }
 
-  // Fix old/broken saved tasks
   projects = projects.map(p => ({
     ...p,
     comments: Array.isArray(p.comments) ? p.comments : [],
@@ -486,16 +502,24 @@
 
   render();
 }
-  async function save() {
-    try { await window.storage.set(STORAGE_KEY, JSON.stringify(projects), true); }
-    catch (e) { console.error('Save failed', e); }
+
+async function save() {
+  const data = JSON.stringify(projects);
+
+  try {
+    localStorage.setItem(STORAGE_KEY, data);
+  } catch (e) {
+    console.error('localStorage save failed', e);
   }
 
-  function escapeHtml(s) {
-    const d = document.createElement('div');
-    d.textContent = s || '';
-    return d.innerHTML;
+  try {
+    if (window.storage) {
+      await window.storage.set(STORAGE_KEY, data, true);
+    }
+  } catch (e) {
+    console.error('window.storage save failed', e);
   }
+}
 
   function render() {
     const total = projects.length;
