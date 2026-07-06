@@ -453,6 +453,19 @@ let projects = [];
 let connectionOk = true;
 const root = document.getElementById('tracker-root');
 const CACHE_KEY = 'checkin-app-tracker-cache';
+const NAME_KEY = 'checkin-app-tracker-username';
+
+function getUserName() {
+  return localStorage.getItem(NAME_KEY);
+}
+
+function promptForName(existing) {
+  const name = window.prompt('Your name (shown on your comments):', existing || '');
+  if (name && name.trim()) {
+    localStorage.setItem(NAME_KEY, name.trim());
+  }
+  render();
+}
 
 function normalize(rows) {
   return rows.map(p => ({
@@ -542,6 +555,7 @@ async function deleteTask(id) {
 }
 
 function render() {
+  const userName = getUserName() || 'Anonymous';
   root.innerHTML = `
     <div class="topbar">
       <div>
@@ -551,6 +565,7 @@ function render() {
         </div>
       </div>
       <div class="top-actions">
+        <button class="btn btn-outline" id="whoami-btn">Commenting as: ${escapeHtml(userName)}</button>
         <button class="btn btn-outline" id="export-btn">⬇ Export</button>
         <button class="btn btn-outline" id="reset-btn">Reset</button>
         <button class="btn btn-orange" id="new-btn">+ New Task</button>
@@ -563,6 +578,8 @@ function render() {
     <div id="stage-list"></div>
     <div class="shared-note">Live and shared — everyone viewing this page sees the same board in real time.</div>
   `;
+
+  root.querySelector('#whoami-btn').addEventListener('click', () => promptForName(userName));
 
   const pipelineEl = root.querySelector('#pipeline');
   STAGES.forEach((stage, i) => {
@@ -702,7 +719,8 @@ function renderProject(p) {
     const input = el.querySelector('[data-role="comment-input"]');
     const text = input.value.trim();
     if (!text) return;
-    const newComments = [...(p.comments || []), { author: 'Jude', time: nowStr(), text }];
+    const author = getUserName() || 'Anonymous';
+    const newComments = [...(p.comments || []), { author, time: nowStr(), text }];
     if (await updateTask(p.id, { comments: newComments })) load();
   });
 
@@ -771,4 +789,7 @@ function openEditModal(existing) {
 
 load();
 subscribeToChanges();
+if (!getUserName()) {
+  promptForName();
+}
 </script>
