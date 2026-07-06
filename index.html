@@ -466,15 +466,26 @@
   const root = document.getElementById('tracker-root');
 
   async function load() {
-    root.innerHTML = '<div class="loading">Loading tracker…</div>';
-    try {
-      const res = await window.storage.get(STORAGE_KEY, true);
-      projects = res && res.value ? JSON.parse(res.value) : JSON.parse(JSON.stringify(SEED));
-    } catch (e) {
-      projects = JSON.parse(JSON.stringify(SEED));
-    }
-    render();
+  root.innerHTML = '<div class="loading">Loading tracker…</div>';
+  try {
+    const res = await window.storage.get(STORAGE_KEY, true);
+    projects = res && res.value ? JSON.parse(res.value) : JSON.parse(JSON.stringify(SEED));
+  } catch (e) {
+    projects = JSON.parse(JSON.stringify(SEED));
   }
+
+  // Fix old/broken saved tasks
+  projects = projects.map(p => ({
+    ...p,
+    comments: Array.isArray(p.comments) ? p.comments : [],
+    status: STATUSES.includes(p.status) ? p.status : 'pending',
+    progress: Number.isFinite(Number(p.progress)) ? Number(p.progress) : 0,
+    desc: p.desc || '',
+    stage: STAGES.includes(p.stage) ? p.stage : STAGES[0]
+  }));
+
+  render();
+}
   async function save() {
     try { await window.storage.set(STORAGE_KEY, JSON.stringify(projects), true); }
     catch (e) { console.error('Save failed', e); }
@@ -606,9 +617,9 @@
         </div>
       </div>
       <div class="project-comments">
-        <div class="comments-heading">💬 Comments (${p.comments.length})</div>
+        <div class="comments-heading">💬 Comments (${(p.comments || []).length})</div>
         <div class="comments-list">
-          ${p.comments.map(c => `
+          ${(p.comments || []).map(c => `
             <div class="comment">
               <div class="meta">${escapeHtml(c.author)} · ${escapeHtml(c.time)}</div>
               <div class="body">${escapeHtml(c.text)}</div>
