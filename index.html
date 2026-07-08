@@ -530,8 +530,18 @@ const CACHE_KEY = 'checkin-app-tracker-cache';
 const DOCS_CACHE_KEY = 'checkin-app-tracker-docs-cache';
 const NAME_KEY = 'checkin-app-tracker-username';
 const DOCS_TABLE = 'tracker_documents';
+const DOCS_BUCKET = 'tracker-files';
 const DOC_TYPES = ['PDF', 'Doc', 'Sheet', 'Slides', 'Repo', 'Link'];
 const DOC_TYPE_ICON = { PDF: '📄', Doc: '📝', Sheet: '📊', Slides: '📽️', Repo: '💻', Link: '🔗' };
+
+function guessDocType(filename) {
+  const ext = (filename.split('.').pop() || '').toLowerCase();
+  if (ext === 'pdf') return 'PDF';
+  if (['doc', 'docx'].includes(ext)) return 'Doc';
+  if (['xls', 'xlsx', 'csv'].includes(ext)) return 'Sheet';
+  if (['ppt', 'pptx'].includes(ext)) return 'Slides';
+  return 'Link';
+}
 
 const DOCS_SEED = [
   { id: 'd' + Math.random().toString(36).slice(2, 10), title: 'Kickoff Documentation', url: 'RCCG-VictoryHouse-CheckIn-Kickoff.pdf', doc_type: 'PDF', added_by: 'Jude' },
@@ -598,7 +608,13 @@ async function insertDocument(doc) {
   return true;
 }
 
-async function deleteDocument(id) {
+async function deleteDocument(id, storagePath) {
+  if (storagePath) {
+    // Best-effort — if this fails, still proceed to remove the DB row
+    // rather than leaving a broken entry the team can't get rid of.
+    const { error: storageError } = await supabase.storage.from(DOCS_BUCKET).remove([storagePath]);
+    if (storageError) console.error('Storage cleanup failed:', storageError);
+  }
   const { error } = await supabase.from(DOCS_TABLE).delete().eq('id', id);
   if (error) {
     alert("Couldn't remove the document — check your connection and try again.");
@@ -739,7 +755,7 @@ function render() {
     `;
     chip.querySelector('.doc-del').addEventListener('click', async () => {
       if (!confirm(`Remove "${doc.title}" from the documents list?`)) return;
-      if (await deleteDocument(doc.id)) {
+      if (await deleteDocument(doc.id, doc.storage_path)) {
         await loadDocuments();
         render();
       }
@@ -914,12 +930,16 @@ function openDocModal() {
     <div class="modal">
       <h3>Add document</h3>
       <div class="field">
-        <label>Title</label>
-        <input id="d-title" type="text" placeholder="e.g. Technical Specification">
+        <label>Upload a file</label>
+        <input id="d-file" type="file">
       </div>
       <div class="field">
-        <label>Link</label>
+        <label>— or paste a link instead —</label>
         <input id="d-url" type="text" placeholder="https://…">
+      </div>
+      <div class="field">
+        <label>Title</label>
+        <input id="d-title" type="text" placeholder="e.g. Technical Specification">
       </div>
       <div class="field">
         <label>Type</label>
@@ -936,17 +956,66 @@ function openDocModal() {
   root.appendChild(overlay);
   overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
   overlay.querySelector('#d-cancel').addEventListener('click', () => overlay.remove());
-  overlay.querySelector('#d-save').addEventListener('click', async () => {
-    const title = overlay.querySelector('#d-title').value.trim();
-    const url = overlay.querySelector('#d-url').value.trim();
-    const doc_type = overlay.querySelector('#d-type').value;
-    if (!title) { overlay.querySelector('#d-title').focus(); return; }
-    if (!url) { overlay.querySelector('#d-url').focus(); return; }
+
+  const fileInput = overlay.querySelector('#d-file');
+  const titleInput = overlay.querySelector('#d-title');
+  const typeSelect = overlay.querySelector('#d-type');
+  const urlInput = overlay.querySelector('#d-url');
+
+  fileInput.addEventListener('change', () => {
+    const file = fileInput.files[0];
+    if (!file) return;
+    if (!titleInput.value.trim()) {
+      titleInput.value = file.name.replace(/\.[^.]+$/, '');
+    }
+    typeSelect.value = guessDocType(file.name);
+    urlInput.value = '';
+    urlInput.disabled = true;
+    urlInput.placeholder = 'Cleared — a file is selected above';
+  });
+
+  const saveBtn = overlay.querySelector('#d-save');
+  saveBtn.addEventListener('click', async () => {
+    const file = fileInput.files[0];
+    let url = urlInput.value.trim();
+    let title = titleInput.value.trim();
+    const doc_type = typeSelect.value;
+    let storagePath = null;
+
+    if (!file && !url) {
+      alert('Choose a file to upload, or paste a link.');
+      return;
+    }
+    if (!title && file) title = file.name.replace(/\.[^.]+$/, '');
+    if (!title) { titleInput.focus(); return; }
+
+    saveBtn.disabled = true;
+    saveBtn.textContent = file ? 'Uploading…' : 'Adding…';
+
+    if (file) {
+      try {
+        const safeName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+        storagePath = `${Date.now()}-${safeName}`;
+        const { error: uploadError } = await supabase.storage
+          .from(DOCS_BUCKET)
+          .upload(storagePath, file);
+        if (uploadError) throw uploadError;
+        const { data: pub } = supabase.storage.from(DOCS_BUCKET).getPublicUrl(storagePath);
+        url = pub.publicUrl;
+      } catch (e) {
+        alert("Couldn't upload the file — check your connection and try again.");
+        console.error(e);
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Add';
+        return;
+      }
+    }
 
     const doc = {
       id: 'd' + Math.random().toString(36).slice(2, 10),
       title, url, doc_type,
       added_by: getUserName() || 'Anonymous',
+      storage_path: storagePath,
     };
     const ok = await insertDocument(doc);
     overlay.remove();
