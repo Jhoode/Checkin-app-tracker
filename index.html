@@ -387,14 +387,12 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 // Project Settings → API in your Supabase dashboard.
 const SUPABASE_URL = 'https://zevnpzyjgwqucgxcqiyn.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inpldm5wenlqZ3dxdWNneGNxaXluIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMyMTg5ODgsImV4cCI6MjA5ODc5NDk4OH0.ajbFb-He8LFHixzyicN-Y5B-Itypv13y-qmTbwWwDH4';
-// ─────────────────────────────────────────────────────────────────────
 
 // Link to the kickoff document — once you've added the PDF to this repo
 // (e.g. in a /docs folder), set this to its path or full URL.
 // Example: 'docs/RCCG-VictoryHouse-CheckIn-Kickoff.pdf'
-const KICKOFF_DOC_URL = 'RCCG-VictoryHouse-CheckIn-Kickoff-1.pdf';
+const KICKOFF_DOC_URL = 'RCCG-VictoryHouse-CheckIn-Kickoff.pdf';
 // ─────────────────────────────────────────────────────────────────────
-
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const TABLE = 'tracker_tasks';
@@ -573,6 +571,7 @@ function render() {
       </div>
       <div class="top-actions">
         <button class="btn btn-outline" id="whoami-btn">Commenting as: ${escapeHtml(userName)}</button>
+        <a class="btn btn-outline" id="kickoff-link" href="${escapeHtml(KICKOFF_DOC_URL)}" target="_blank" rel="noopener" style="text-decoration:none; display:inline-flex; align-items:center;">📄 Kickoff Doc</a>
         <button class="btn btn-outline" id="export-btn">⬇ Export</button>
         <button class="btn btn-outline" id="reset-btn">Reset</button>
         <button class="btn btn-orange" id="new-btn">+ New Task</button>
