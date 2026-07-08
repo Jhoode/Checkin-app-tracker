@@ -76,6 +76,79 @@
     margin: 14px 0 18px;
   }
 
+  #tracker-root .docs-section {
+    margin-bottom: 24px;
+  }
+  #tracker-root .docs-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+  }
+  #tracker-root .docs-heading .label {
+    color: var(--orange-soft);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+  }
+  #tracker-root .docs-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  #tracker-root .doc-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 6px 8px 6px 14px;
+    font-size: 12.5px;
+  }
+  #tracker-root .doc-chip a {
+    color: var(--text);
+    text-decoration: none;
+    font-weight: 600;
+  }
+  #tracker-root .doc-chip a:hover { color: var(--orange-soft); }
+  #tracker-root .doc-chip .doc-type {
+    font-size: 10px;
+    color: var(--text-dim);
+    background: var(--panel-2);
+    padding: 2px 7px;
+    border-radius: 10px;
+  }
+  #tracker-root .doc-chip .doc-del {
+    background: transparent;
+    border: none;
+    color: var(--text-dim);
+    cursor: pointer;
+    font-size: 13px;
+    padding: 2px 4px;
+    border-radius: 50%;
+    line-height: 1;
+  }
+  #tracker-root .doc-chip .doc-del:hover { color: var(--red); }
+  #tracker-root .doc-add-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: transparent;
+    border: 1px dashed var(--border);
+    border-radius: 20px;
+    padding: 6px 14px;
+    font-size: 12.5px;
+    color: var(--text-dim);
+    cursor: pointer;
+  }
+  #tracker-root .doc-add-chip:hover { border-color: var(--orange); color: var(--orange-soft); }
+  #tracker-root .docs-empty {
+    font-size: 12.5px;
+    color: var(--text-dim);
+    font-style: italic;
+  }
+
   #tracker-root .backlog-label {
     color: var(--orange-soft);
     font-size: 12px;
@@ -387,11 +460,6 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 // Project Settings → API in your Supabase dashboard.
 const SUPABASE_URL = 'https://zevnpzyjgwqucgxcqiyn.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inpldm5wenlqZ3dxdWNneGNxaXluIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMyMTg5ODgsImV4cCI6MjA5ODc5NDk4OH0.ajbFb-He8LFHixzyicN-Y5B-Itypv13y-qmTbwWwDH4';
-
-// Link to the kickoff document — once you've added the PDF to this repo
-// (e.g. in a /docs folder), set this to its path or full URL.
-// Example: 'docs/RCCG-VictoryHouse-CheckIn-Kickoff.pdf'
-const KICKOFF_DOC_URL = 'RCCG-VictoryHouse-CheckIn-Kickoff.pdf';
 // ─────────────────────────────────────────────────────────────────────
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -455,10 +523,19 @@ const SEED = [
 ];
 
 let projects = [];
+let documents = [];
 let connectionOk = true;
 const root = document.getElementById('tracker-root');
 const CACHE_KEY = 'checkin-app-tracker-cache';
+const DOCS_CACHE_KEY = 'checkin-app-tracker-docs-cache';
 const NAME_KEY = 'checkin-app-tracker-username';
+const DOCS_TABLE = 'tracker_documents';
+const DOC_TYPES = ['PDF', 'Doc', 'Sheet', 'Slides', 'Repo', 'Link'];
+const DOC_TYPE_ICON = { PDF: '📄', Doc: '📝', Sheet: '📊', Slides: '📽️', Repo: '💻', Link: '🔗' };
+
+const DOCS_SEED = [
+  { id: 'd' + Math.random().toString(36).slice(2, 10), title: 'Kickoff Documentation', url: 'RCCG-VictoryHouse-CheckIn-Kickoff.pdf', doc_type: 'PDF', added_by: 'Jude' },
+];
 
 function getUserName() {
   return localStorage.getItem(NAME_KEY);
@@ -481,6 +558,64 @@ function normalize(rows) {
     description: p.description || '',
     stage: STAGES.includes(p.stage) ? p.stage : STAGES[0]
   }));
+}
+
+async function loadDocuments() {
+  try {
+    const { data, error } = await supabase
+      .from(DOCS_TABLE)
+      .select('*')
+      .order('created_at', { ascending: true });
+
+    if (error) throw error;
+
+    if (!data || data.length === 0) {
+      const { error: insertError } = await supabase.from(DOCS_TABLE).insert(DOCS_SEED);
+      if (insertError) throw insertError;
+      documents = DOCS_SEED;
+    } else {
+      documents = data;
+    }
+    localStorage.setItem(DOCS_CACHE_KEY, JSON.stringify(documents));
+  } catch (e) {
+    console.error('Documents load failed, falling back to cache:', e);
+    try {
+      const cached = localStorage.getItem(DOCS_CACHE_KEY);
+      documents = cached ? JSON.parse(cached) : DOCS_SEED;
+    } catch {
+      documents = DOCS_SEED;
+    }
+  }
+}
+
+async function insertDocument(doc) {
+  const { error } = await supabase.from(DOCS_TABLE).insert(doc);
+  if (error) {
+    alert("Couldn't save the document — check your connection and try again.");
+    console.error(error);
+    return false;
+  }
+  return true;
+}
+
+async function deleteDocument(id) {
+  const { error } = await supabase.from(DOCS_TABLE).delete().eq('id', id);
+  if (error) {
+    alert("Couldn't remove the document — check your connection and try again.");
+    console.error(error);
+    return false;
+  }
+  return true;
+}
+
+function subscribeToDocumentChanges() {
+  supabase
+    .channel('tracker-documents-live')
+    .on('postgres_changes', { event: '*', schema: 'public', table: DOCS_TABLE }, async () => {
+      await loadDocuments();
+      render();
+    })
+    .subscribe();
 }
 
 async function load() {
@@ -516,6 +651,7 @@ async function load() {
     }
   }
 
+  await loadDocuments();
   render();
 }
 
@@ -571,7 +707,6 @@ function render() {
       </div>
       <div class="top-actions">
         <button class="btn btn-outline" id="whoami-btn">Commenting as: ${escapeHtml(userName)}</button>
-        <a class="btn btn-outline" id="kickoff-link" href="${escapeHtml(KICKOFF_DOC_URL)}" target="_blank" rel="noopener" style="text-decoration:none; display:inline-flex; align-items:center;">📄 Kickoff Doc</a>
         <button class="btn btn-outline" id="export-btn">⬇ Export</button>
         <button class="btn btn-outline" id="reset-btn">Reset</button>
         <button class="btn btn-orange" id="new-btn">+ New Task</button>
@@ -579,6 +714,12 @@ function render() {
     </div>
     <hr class="divider">
     ${!connectionOk ? '<div class="error-banner">Couldn\'t reach the shared board — showing your last saved copy. Changes won\'t save until connection is back.</div>' : ''}
+
+    <div class="docs-section">
+      <div class="docs-heading"><span class="label">📁 DOCUMENTS</span></div>
+      <div class="docs-list" id="docs-list"></div>
+    </div>
+
     <div class="backlog-label">📋 PRODUCT BACKLOG WITH THE STEPS</div>
     <div class="pipeline" id="pipeline"></div>
     <div id="stage-list"></div>
@@ -586,6 +727,33 @@ function render() {
   `;
 
   root.querySelector('#whoami-btn').addEventListener('click', () => promptForName(userName));
+
+  const docsList = root.querySelector('#docs-list');
+  documents.forEach(doc => {
+    const chip = document.createElement('div');
+    chip.className = 'doc-chip';
+    chip.innerHTML = `
+      <span class="doc-type">${DOC_TYPE_ICON[doc.doc_type] || '🔗'} ${escapeHtml(doc.doc_type)}</span>
+      <a href="${escapeHtml(doc.url)}" target="_blank" rel="noopener">${escapeHtml(doc.title)}</a>
+      <button class="doc-del" data-id="${doc.id}" title="Remove">✕</button>
+    `;
+    chip.querySelector('.doc-del').addEventListener('click', async () => {
+      if (!confirm(`Remove "${doc.title}" from the documents list?`)) return;
+      if (await deleteDocument(doc.id)) {
+        await loadDocuments();
+        render();
+      }
+    });
+    docsList.appendChild(chip);
+  });
+  const addChip = document.createElement('button');
+  addChip.className = 'doc-add-chip';
+  addChip.textContent = '+ Add document';
+  addChip.addEventListener('click', () => openDocModal());
+  docsList.appendChild(addChip);
+  if (documents.length === 0) {
+    docsList.insertAdjacentHTML('afterbegin', '<span class="docs-empty">No documents added yet.</span>');
+  }
 
   const pipelineEl = root.querySelector('#pipeline');
   STAGES.forEach((stage, i) => {
@@ -739,6 +907,56 @@ function escapeHtml(s) {
   return d.innerHTML;
 }
 
+function openDocModal() {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal">
+      <h3>Add document</h3>
+      <div class="field">
+        <label>Title</label>
+        <input id="d-title" type="text" placeholder="e.g. Technical Specification">
+      </div>
+      <div class="field">
+        <label>Link</label>
+        <input id="d-url" type="text" placeholder="https://…">
+      </div>
+      <div class="field">
+        <label>Type</label>
+        <select id="d-type">
+          ${DOC_TYPES.map(t => `<option value="${t}">${DOC_TYPE_ICON[t]} ${t}</option>`).join('')}
+        </select>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-outline" id="d-cancel">Cancel</button>
+        <button class="btn btn-orange" id="d-save">Add</button>
+      </div>
+    </div>
+  `;
+  root.appendChild(overlay);
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  overlay.querySelector('#d-cancel').addEventListener('click', () => overlay.remove());
+  overlay.querySelector('#d-save').addEventListener('click', async () => {
+    const title = overlay.querySelector('#d-title').value.trim();
+    const url = overlay.querySelector('#d-url').value.trim();
+    const doc_type = overlay.querySelector('#d-type').value;
+    if (!title) { overlay.querySelector('#d-title').focus(); return; }
+    if (!url) { overlay.querySelector('#d-url').focus(); return; }
+
+    const doc = {
+      id: 'd' + Math.random().toString(36).slice(2, 10),
+      title, url, doc_type,
+      added_by: getUserName() || 'Anonymous',
+    };
+    const ok = await insertDocument(doc);
+    overlay.remove();
+    if (ok) {
+      await loadDocuments();
+      render();
+    }
+  });
+}
+
 function openEditModal(existing) {
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
@@ -795,6 +1013,7 @@ function openEditModal(existing) {
 
 load();
 subscribeToChanges();
+subscribeToDocumentChanges();
 if (!getUserName()) {
   promptForName();
 }
