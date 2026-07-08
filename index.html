@@ -76,6 +76,72 @@
     margin: 14px 0 18px;
   }
 
+  #tracker-root .notif-wrap {
+    position: relative;
+    display: inline-block;
+  }
+  #tracker-root .notif-btn {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    width: 34px; height: 34px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 15px;
+    position: relative;
+  }
+  #tracker-root .notif-btn:hover { color: var(--text); border-color: #555; }
+  #tracker-root .notif-badge {
+    position: absolute;
+    top: -5px; right: -5px;
+    background: var(--red);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    min-width: 16px;
+    height: 16px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 3px;
+  }
+  #tracker-root .notif-panel {
+    position: absolute;
+    top: 40px;
+    right: 0;
+    width: 320px;
+    max-height: 360px;
+    overflow-y: auto;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+    z-index: 40;
+    padding: 6px 0;
+  }
+  #tracker-root .notif-item {
+    padding: 9px 14px;
+    font-size: 12.5px;
+    color: var(--text);
+    border-bottom: 1px solid var(--border);
+    line-height: 1.4;
+  }
+  #tracker-root .notif-item:last-child { border-bottom: none; }
+  #tracker-root .notif-time {
+    display: block;
+    font-size: 10.5px;
+    color: var(--text-dim);
+    margin-top: 2px;
+  }
+  #tracker-root .notif-empty {
+    padding: 20px 14px;
+    font-size: 12.5px;
+    color: var(--text-dim);
+    text-align: center;
+    font-style: italic;
+  }
+
   #tracker-root .docs-section {
     margin-bottom: 24px;
   }
@@ -524,11 +590,16 @@ const SEED = [
 
 let projects = [];
 let documents = [];
+let activity = [];
+let notifOpen = false;
 let connectionOk = true;
 const root = document.getElementById('tracker-root');
 const CACHE_KEY = 'checkin-app-tracker-cache';
 const DOCS_CACHE_KEY = 'checkin-app-tracker-docs-cache';
+const ACTIVITY_CACHE_KEY = 'checkin-app-tracker-activity-cache';
+const LAST_SEEN_KEY = 'checkin-app-tracker-last-seen';
 const NAME_KEY = 'checkin-app-tracker-username';
+const ACTIVITY_TABLE = 'tracker_activity';
 const DOCS_TABLE = 'tracker_documents';
 const DOCS_BUCKET = 'tracker-files';
 const DOC_TYPES = ['PDF', 'Doc', 'Sheet', 'Slides', 'Repo', 'Link'];
@@ -568,6 +639,56 @@ function normalize(rows) {
     description: p.description || '',
     stage: STAGES.includes(p.stage) ? p.stage : STAGES[0]
   }));
+}
+
+async function loadActivity() {
+  try {
+    const { data, error } = await supabase
+      .from(ACTIVITY_TABLE)
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(30);
+    if (error) throw error;
+    activity = data || [];
+    localStorage.setItem(ACTIVITY_CACHE_KEY, JSON.stringify(activity));
+  } catch (e) {
+    console.error('Activity load failed, falling back to cache:', e);
+    try {
+      const cached = localStorage.getItem(ACTIVITY_CACHE_KEY);
+      activity = cached ? JSON.parse(cached) : [];
+    } catch {
+      activity = [];
+    }
+  }
+}
+
+async function logActivity(message) {
+  const actor = getUserName() || 'Someone';
+  try {
+    await supabase.from(ACTIVITY_TABLE).insert({
+      id: 'a' + Math.random().toString(36).slice(2, 10),
+      message: `${actor} ${message}`,
+    });
+  } catch (e) {
+    // Never let a logging failure block the actual action that triggered it.
+    console.error('Activity log failed:', e);
+  }
+}
+
+function unreadCount() {
+  const lastSeen = localStorage.getItem(LAST_SEEN_KEY);
+  const lastSeenTime = lastSeen ? new Date(lastSeen).getTime() : 0;
+  return activity.filter(a => new Date(a.created_at).getTime() > lastSeenTime).length;
+}
+
+function subscribeToActivityChanges() {
+  supabase
+    .channel('tracker-activity-live')
+    .on('postgres_changes', { event: '*', schema: 'public', table: ACTIVITY_TABLE }, async () => {
+      await loadActivity();
+      render();
+    })
+    .subscribe();
 }
 
 async function loadDocuments() {
@@ -668,6 +789,7 @@ async function load() {
   }
 
   await loadDocuments();
+  await loadActivity();
   render();
 }
 
@@ -722,6 +844,24 @@ function render() {
         </div>
       </div>
       <div class="top-actions">
+        <div class="notif-wrap">
+          <button class="notif-btn" id="notif-btn" title="Activity">
+            🔔
+            ${unreadCount() > 0 ? `<span class="notif-badge">${unreadCount() > 9 ? '9+' : unreadCount()}</span>` : ''}
+          </button>
+          ${notifOpen ? `
+            <div class="notif-panel" id="notif-panel">
+              ${activity.length === 0
+                ? '<div class="notif-empty">No activity yet</div>'
+                : activity.map(a => `
+                  <div class="notif-item">
+                    ${escapeHtml(a.message)}
+                    <span class="notif-time">${new Date(a.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>
+                  </div>
+                `).join('')}
+            </div>
+          ` : ''}
+        </div>
         <button class="btn btn-outline" id="whoami-btn">Commenting as: ${escapeHtml(userName)}</button>
         <button class="btn btn-outline" id="export-btn">⬇ Export</button>
         <button class="btn btn-outline" id="reset-btn">Reset</button>
@@ -742,6 +882,27 @@ function render() {
     <div class="shared-note">Live and shared — everyone viewing this page sees the same board in real time.</div>
   `;
 
+  root.querySelector('#notif-btn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    notifOpen = !notifOpen;
+    if (notifOpen) {
+      localStorage.setItem(LAST_SEEN_KEY, new Date().toISOString());
+    }
+    render();
+  });
+  if (notifOpen) {
+    // Close the panel on any click elsewhere on the page.
+    setTimeout(() => {
+      document.addEventListener('click', function closeNotif(e) {
+        if (!e.target.closest('.notif-wrap')) {
+          notifOpen = false;
+          render();
+        }
+        document.removeEventListener('click', closeNotif);
+      });
+    }, 0);
+  }
+
   root.querySelector('#whoami-btn').addEventListener('click', () => promptForName(userName));
 
   const docsList = root.querySelector('#docs-list');
@@ -756,6 +917,7 @@ function render() {
     chip.querySelector('.doc-del').addEventListener('click', async () => {
       if (!confirm(`Remove "${doc.title}" from the documents list?`)) return;
       if (await deleteDocument(doc.id, doc.storage_path)) {
+        logActivity(`removed document "${doc.title}"`);
         await loadDocuments();
         render();
       }
@@ -884,26 +1046,44 @@ function renderProject(p) {
     const patch = { status: newStatus };
     if (newStatus === 'complete') patch.progress = 100;
     if (newStatus === 'pending') patch.progress = 0;
-    if (await updateTask(p.id, patch)) load();
+    if (await updateTask(p.id, patch)) {
+      logActivity(`moved "${p.title}" to ${STATUS_LABEL[newStatus]}`);
+      load();
+    }
   });
   el.querySelector('[data-act="edit"]').addEventListener('click', () => openEditModal(p));
   el.querySelector('[data-act="delete"]').addEventListener('click', async () => {
     if (!confirm('Delete this task?')) return;
-    if (await deleteTask(p.id)) load();
+    if (await deleteTask(p.id)) {
+      logActivity(`deleted task "${p.title}"`);
+      load();
+    }
   });
   el.querySelector('[data-act="done"]').addEventListener('click', async () => {
-    if (await updateTask(p.id, { progress: 100, status: 'complete' })) load();
+    if (await updateTask(p.id, { progress: 100, status: 'complete' })) {
+      logActivity(`marked "${p.title}" as Done`);
+      load();
+    }
   });
   el.querySelector('[data-act="start"]').addEventListener('click', async () => {
     const patch = { status: 'in_progress' };
     if (p.progress === 0) patch.progress = 5;
-    if (await updateTask(p.id, patch)) load();
+    if (await updateTask(p.id, patch)) {
+      logActivity(`started "${p.title}"`);
+      load();
+    }
   });
   el.querySelector('[data-act="stop"]').addEventListener('click', async () => {
-    if (await updateTask(p.id, { status: 'pending' })) load();
+    if (await updateTask(p.id, { status: 'pending' })) {
+      logActivity(`stopped "${p.title}"`);
+      load();
+    }
   });
   el.querySelector('[data-act="block"]').addEventListener('click', async () => {
-    if (await updateTask(p.id, { status: 'blocked' })) load();
+    if (await updateTask(p.id, { status: 'blocked' })) {
+      logActivity(`blocked "${p.title}"`);
+      load();
+    }
   });
   el.querySelector('[data-act="post-comment"]').addEventListener('click', async () => {
     const input = el.querySelector('[data-role="comment-input"]');
@@ -911,7 +1091,10 @@ function renderProject(p) {
     if (!text) return;
     const author = getUserName() || 'Anonymous';
     const newComments = [...(p.comments || []), { author, time: nowStr(), text }];
-    if (await updateTask(p.id, { comments: newComments })) load();
+    if (await updateTask(p.id, { comments: newComments })) {
+      logActivity(`commented on "${p.title}"`);
+      load();
+    }
   });
 
   return el;
@@ -1020,6 +1203,7 @@ function openDocModal() {
     const ok = await insertDocument(doc);
     overlay.remove();
     if (ok) {
+      logActivity(`added document "${title}"`);
       await loadDocuments();
       render();
     }
@@ -1072,8 +1256,10 @@ function openEditModal(existing) {
     let ok;
     if (existing) {
       ok = await updateTask(existing.id, { title, stage, description, status, progress });
+      if (ok) logActivity(`updated task "${title}"`);
     } else {
       ok = await insertTask(mk(title, stage, status, progress, description, []));
+      if (ok) logActivity(`added task "${title}"`);
     }
     overlay.remove();
     if (ok) load();
@@ -1083,6 +1269,7 @@ function openEditModal(existing) {
 load();
 subscribeToChanges();
 subscribeToDocumentChanges();
+subscribeToActivityChanges();
 if (!getUserName()) {
   promptForName();
 }
