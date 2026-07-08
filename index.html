@@ -395,6 +395,20 @@
   #tracker-root .progress-fill.blocked { background: var(--red); }
   #tracker-root .progress-fill.pending { background: var(--blue); }
   #tracker-root .progress-pct { font-size: 12px; color: var(--text-dim); width: 38px; text-align: right; }
+  #tracker-root .progress-slider-row { margin-bottom: 10px; }
+  #tracker-root .progress-slider {
+    width: 100%;
+    accent-color: var(--orange);
+    cursor: pointer;
+  }
+  #tracker-root .progress-ticks {
+    display: flex;
+    justify-content: space-between;
+    font-size: 9.5px;
+    color: var(--text-dim);
+    padding: 0 1px;
+    margin-top: -2px;
+  }
 
   #tracker-root .step-actions { display: flex; gap: 7px; margin-bottom: 8px; }
   #tracker-root .sbtn {
@@ -1013,8 +1027,13 @@ function renderProject(p) {
       </div>
       <div class="project-desc">${escapeHtml(p.description)}</div>
       <div class="progress-row">
-        <div class="progress-track"><div class="progress-fill ${p.status}" style="width:${p.progress}%"></div></div>
-        <div class="progress-pct">${p.progress}%</div>
+        <div class="progress-track"><div class="progress-fill ${p.status}" data-role="progress-fill" style="width:${p.progress}%"></div></div>
+        <div class="progress-pct" data-role="progress-pct">${p.progress}%</div>
+      </div>
+      <div class="progress-slider-row">
+        <input type="range" class="progress-slider" data-role="progress-slider"
+               min="0" max="100" step="5" value="${p.progress}">
+        <div class="progress-ticks"><span>0</span><span>20</span><span>40</span><span>60</span><span>80</span><span>100</span></div>
       </div>
       <div class="step-actions">
         <button class="sbtn start" data-act="start">▶ Start</button>
@@ -1040,6 +1059,24 @@ function renderProject(p) {
       </div>
     </div>
   `;
+
+  const slider = el.querySelector('[data-role="progress-slider"]');
+  slider.addEventListener('input', () => {
+    const val = slider.value;
+    el.querySelector('[data-role="progress-fill"]').style.width = val + '%';
+    el.querySelector('[data-role="progress-pct"]').textContent = val + '%';
+  });
+  slider.addEventListener('change', async () => {
+    const val = parseInt(slider.value, 10);
+    const patch = { progress: val };
+    if (val === 100) patch.status = 'complete';
+    else if (val === 0) patch.status = 'pending';
+    else if (p.status === 'complete' || p.status === 'pending') patch.status = 'in_progress';
+    if (await updateTask(p.id, patch)) {
+      logActivity(`set "${p.title}" progress to ${val}%`);
+      load();
+    }
+  });
 
   el.querySelector('[data-act="cycle"]').addEventListener('click', async () => {
     const newStatus = nextStatus(p.status);
