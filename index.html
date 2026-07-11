@@ -539,7 +539,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 // ── Fill these in with your Supabase project's values ──────────────────
 // Project Settings → API in your Supabase dashboard.
 const SUPABASE_URL = 'https://zevnpzyjgwqucgxcqiyn.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inpldm5wenlqZ3dxdWNneGNxaXluIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMyMTg5ODgsImV4cCI6MjA5ODc5NDk4OH0.ajbFb-He8LFHixzyicN-Y5B-Itypv13y-qmTbwWwDH4';
+const SUPABASE_ANON_KEY = 'YOUR_ANON_KEY_HERE';
 // ─────────────────────────────────────────────────────────────────────
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -698,9 +698,8 @@ function unreadCount() {
 function subscribeToActivityChanges() {
   supabase
     .channel('tracker-activity-live')
-    .on('postgres_changes', { event: '*', schema: 'public', table: ACTIVITY_TABLE }, async () => {
-      await loadActivity();
-      render();
+    .on('postgres_changes', { event: '*', schema: 'public', table: ACTIVITY_TABLE }, () => {
+      scheduleReload();
     })
     .subscribe();
 }
@@ -762,15 +761,55 @@ async function deleteDocument(id, storagePath) {
 function subscribeToDocumentChanges() {
   supabase
     .channel('tracker-documents-live')
-    .on('postgres_changes', { event: '*', schema: 'public', table: DOCS_TABLE }, async () => {
-      await loadDocuments();
-      render();
+    .on('postgres_changes', { event: '*', schema: 'public', table: DOCS_TABLE }, () => {
+      scheduleReload();
     })
     .subscribe();
 }
 
-async function load() {
-  root.innerHTML = '<div class="loading">Loading tracker…</div>';
+let activeCommentDraft = null;
+
+function captureActiveCommentDraft() {
+  const active = document.activeElement;
+  if (active && active.matches && active.matches('[data-role="comment-input"]')) {
+    const card = active.closest('[data-task-id]');
+    if (card) {
+      activeCommentDraft = {
+        taskId: card.dataset.taskId,
+        value: active.value,
+        selectionStart: active.selectionStart,
+      };
+      return;
+    }
+  }
+  activeCommentDraft = null;
+}
+
+function restoreActiveCommentDraft() {
+  if (!activeCommentDraft) return;
+  const card = root.querySelector(`[data-task-id="${activeCommentDraft.taskId}"]`);
+  const input = card ? card.querySelector('[data-role="comment-input"]') : null;
+  if (!input) { activeCommentDraft = null; return; }
+  input.value = activeCommentDraft.value;
+  input.focus();
+  try { input.setSelectionRange(activeCommentDraft.selectionStart, activeCommentDraft.selectionStart); } catch {}
+}
+
+let reloadTimer = null;
+function scheduleReload() {
+  // Batches rapid-fire changes (e.g. several teammates commenting within
+  // seconds of each other) into a single reload, instead of rebuilding
+  // the whole page once per event — which was interrupting anyone
+  // actively typing a comment at the same time.
+  clearTimeout(reloadTimer);
+  reloadTimer = setTimeout(() => load(), 400);
+}
+
+async function load(showSpinner = false) {
+  captureActiveCommentDraft();
+  if (showSpinner) {
+    root.innerHTML = '<div class="loading">Loading tracker…</div>';
+  }
 
   try {
     const { data, error } = await supabase
@@ -811,8 +850,7 @@ function subscribeToChanges() {
   supabase
     .channel('tracker-tasks-live')
     .on('postgres_changes', { event: '*', schema: 'public', table: TABLE }, () => {
-      // Simplest correct approach: any change from anyone, just refetch.
-      load();
+      scheduleReload();
     })
     .subscribe();
 }
@@ -1002,6 +1040,8 @@ function render() {
     a.click();
     URL.revokeObjectURL(url);
   });
+
+  restoreActiveCommentDraft();
 }
 
 function nextStatus(status) {
@@ -1012,6 +1052,7 @@ function nextStatus(status) {
 function renderProject(p) {
   const el = document.createElement('div');
   el.className = 'project';
+  el.dataset.taskId = p.id;
   el.innerHTML = `
     <div class="project-main">
       <div class="project-head">
@@ -1126,6 +1167,8 @@ function renderProject(p) {
     const input = el.querySelector('[data-role="comment-input"]');
     const text = input.value.trim();
     if (!text) return;
+    input.value = '';
+    input.blur();
     const author = getUserName() || 'Anonymous';
     const newComments = [...(p.comments || []), { author, time: nowStr(), text }];
     if (await updateTask(p.id, { comments: newComments })) {
@@ -1303,7 +1346,7 @@ function openEditModal(existing) {
   });
 }
 
-load();
+load(true);
 subscribeToChanges();
 subscribeToDocumentChanges();
 subscribeToActivityChanges();
