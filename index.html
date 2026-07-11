@@ -450,7 +450,27 @@
     margin-bottom: 7px;
     font-size: 12.5px;
   }
-  #tracker-root .comment .meta { color: var(--orange-soft); font-size: 10.5px; margin-bottom: 3px; font-weight: 600; }
+  #tracker-root .comment .meta {
+    color: var(--orange-soft);
+    font-size: 10.5px;
+    margin-bottom: 3px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  #tracker-root .comment-del {
+    background: transparent;
+    border: none;
+    color: var(--text-dim);
+    cursor: pointer;
+    font-size: 11px;
+    padding: 0 2px;
+    line-height: 1;
+    flex-shrink: 0;
+  }
+  #tracker-root .comment-del:hover { color: var(--red); }
   #tracker-root .comment .body { color: #d8d8d8; line-height: 1.35; }
   #tracker-root .comment-add { display: flex; gap: 8px; margin-top: 6px; }
   #tracker-root .comment-add input {
@@ -1088,9 +1108,12 @@ function renderProject(p) {
     <div class="project-comments">
       <div class="comments-heading">💬 Comments (${(p.comments || []).length})</div>
       <div class="comments-list">
-        ${(p.comments || []).map(c => `
+        ${(p.comments || []).map((c, i) => `
           <div class="comment">
-            <div class="meta">${escapeHtml(c.author)} · ${escapeHtml(c.time)}</div>
+            <div class="meta">
+              <span>${escapeHtml(c.author)} · ${escapeHtml(c.time)}</span>
+              <button class="comment-del" data-idx="${i}" title="Delete comment">✕</button>
+            </div>
             <div class="body">${escapeHtml(c.text)}</div>
           </div>`).join('') || '<div class="no-comments">No comments yet</div>'}
       </div>
@@ -1163,6 +1186,18 @@ function renderProject(p) {
       load();
     }
   });
+  el.querySelectorAll('.comment-del').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (!confirm('Delete this comment?')) return;
+      const idx = parseInt(btn.dataset.idx, 10);
+      const newComments = (p.comments || []).filter((_, i) => i !== idx);
+      if (await updateTask(p.id, { comments: newComments })) {
+        logActivity(`deleted a comment on "${p.title}"`);
+        load();
+      }
+    });
+  });
+
   el.querySelector('[data-act="post-comment"]').addEventListener('click', async () => {
     const input = el.querySelector('[data-role="comment-input"]');
     const text = input.value.trim();
